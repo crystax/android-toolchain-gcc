@@ -46,8 +46,8 @@
   "%{!fno-pic:%{!fno-PIC:%{!fpic:%{!fPIC: -fPIC}}}}"
 
 #define ANDROID_CC1PLUS_SPEC						\
-  "%{!fexceptions:%{!fno-exceptions: -fno-exceptions}} "		\
-  "%{!frtti:%{!fno-rtti: -fno-rtti}}"
+  "%{!fexceptions:%{!fno-exceptions: -fexceptions}} "		\
+  "%{!frtti:%{!fno-rtti: -frtti}}"
 
 #define ANDROID_LIB_SPEC \
   "%{!static: -ldl}"
