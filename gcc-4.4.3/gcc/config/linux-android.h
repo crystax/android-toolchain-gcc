@@ -43,7 +43,7 @@
 
 #define ANDROID_CC1_SPEC						\
   "%{!mglibc:%{!muclibc:%{!mbionic: -mbionic}}} "			\
-  "%{!fno-pic:%{!fno-PIC:%{!fpic:%{!fPIC: -fPIC}}}}"
+  "%{!fno-pic:%{!fno-PIC:%{!fpic:%{!fPIC: -fpic}}}}"
 
 #define ANDROID_CC1PLUS_SPEC						\
   "%{!fexceptions:%{!fno-exceptions: -fexceptions}} "		\
