@@ -1,6 +1,6 @@
 // Locale support -*- C++ -*-
 
-// Copyright (C) 2010 Free Software Foundation, Inc.
+// Copyright (C) 2000, 2003, 2009 Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
 // software; you can redistribute it and/or modify it under the
@@ -25,11 +25,11 @@
 //
 // ISO C++ 14882: 22.1  Locales
 //
-
-// Information as gleaned from /usr/include/ctype.h, for solaris2.5.1
-
-// Support for Solaris 2.5.1
-
+  
+// Information as gleaned from /usr/include/ctype.h on FreeBSD 3.4,
+// 4.0 and all versions of the CVS managed file at:
+// :pserver:anoncvs@anoncvs.freebsd.org:/home/ncvs/src/include/ctype.h
+  
 _GLIBCXX_BEGIN_NAMESPACE(std)
 
   /// @brief  Base class for ctype.
@@ -40,18 +40,34 @@ _GLIBCXX_BEGIN_NAMESPACE(std)
 
     // NB: Offsets into ctype<char>::_M_table force a particular size
     // on the mask type. Because of this, we don't use an enum.
-    typedef char 		mask;
+    typedef unsigned long 	mask;
+#ifdef _CTYPE_S
+    // FreeBSD 4.0 uses this style of define.
+    static const mask upper    	= _CTYPE_U;
+    static const mask lower 	= _CTYPE_L;
+    static const mask alpha 	= _CTYPE_A;
+    static const mask digit 	= _CTYPE_D;
+    static const mask xdigit 	= _CTYPE_X;
+    static const mask space 	= _CTYPE_S;
+    static const mask print 	= _CTYPE_R;
+    static const mask graph 	= _CTYPE_A | _CTYPE_D | _CTYPE_P;
+    static const mask cntrl 	= _CTYPE_C;
+    static const mask punct 	= _CTYPE_P;
+    static const mask alnum 	= _CTYPE_A | _CTYPE_D;
+#else
+    // Older versions, including Free BSD 3.4, use this style of define.
     static const mask upper    	= _U;
     static const mask lower 	= _L;
-    static const mask alpha 	= _U | _L;
-    static const mask digit 	= _N;
-    static const mask xdigit 	= _X | _N;
+    static const mask alpha 	= _A;
+    static const mask digit 	= _D;
+    static const mask xdigit 	= _X;
     static const mask space 	= _S;
-    static const mask print 	= _P | _U | _L | _N | _B;
-    static const mask graph 	= _P | _U | _L | _N;
+    static const mask print 	= _R;
+    static const mask graph 	= _A | _D | _P;
     static const mask cntrl 	= _C;
     static const mask punct 	= _P;
-    static const mask alnum 	= _U | _L | _N;
+    static const mask alnum 	= _A | _D;
+#endif
   };
 
 _GLIBCXX_END_NAMESPACE
