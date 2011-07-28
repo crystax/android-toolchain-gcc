@@ -29,6 +29,8 @@
 // Information as gleaned from /usr/include/ctype.h on FreeBSD 3.4,
 // 4.0 and all versions of the CVS managed file at:
 // :pserver:anoncvs@anoncvs.freebsd.org:/home/ncvs/src/include/ctype.h
+
+#include <_ctype.h>
   
 _GLIBCXX_BEGIN_NAMESPACE(std)
 
