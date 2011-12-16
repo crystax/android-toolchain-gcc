@@ -1677,7 +1677,7 @@ if test "x$with_ppl" != xno; then
     LDFLAGS="$saved_LDFLAGS"
   fi
 
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx"
+  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx -lstdc++"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"
