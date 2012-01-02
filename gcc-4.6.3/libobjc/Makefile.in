@@ -234,7 +234,7 @@ FLAGS_TO_PASS = \
 
 # The 'all' rule must be the first one so that it is executed if
 # nothing is specified on the command-line.
-all: libobjc$(libsuffix).la $(OBJC_BOEHM_GC)
+all: libobjc$(libsuffix).la libgnuobjc_shared$(libsuffix).la $(OBJC_BOEHM_GC)
 	: $(MAKE) ; exec $(MULTIDO) $(FLAGS_TO_PASS) multi-do DO=all
 
 .SUFFIXES:
@@ -326,13 +326,19 @@ LTLDFLAGS = $(shell $(SHELL) $(top_srcdir)/../libtool-ldflags $(LDFLAGS))
 libobjc$(libsuffix).la: $(OBJS)
 	$(LIBTOOL_LINK) $(CC) -o $@ $(OBJS) \
 		-Wc,-shared-libgcc -rpath $(toolexeclibdir) \
-		-version-info $(LIBOBJC_VERSION) $(extra_ldflags_libobjc) \
+		-avoid-version $(extra_ldflags_libobjc) \
+		$(LTLDFLAGS)
+
+libgnuobjc_shared$(libsuffix).la: $(OBJS)
+	$(LIBTOOL_LINK) $(CC) -o $@ $(OBJS) \
+		-Wc,-shared-libgcc -rpath $(toolexeclibdir) \
+		-avoid-version $(extra_ldflags_libobjc) \
 		$(LTLDFLAGS)
 
 libobjc_gc$(libsuffix).la: $(OBJS_GC)
 	$(LIBTOOL_LINK) $(CC) -o $@ $(OBJS_GC) $(OBJC_BOEHM_GC_LIBS) \
 		-Wc,-shared-libgcc -rpath $(toolexeclibdir) \
-		-version-info $(LIBOBJC_GC_VERSION) $(extra_ldflags_libobjc) \
+		-avoid-version $(extra_ldflags_libobjc) \
 		$(LTLDFLAGS)
 
 info:
@@ -372,7 +378,7 @@ install: install-libs install-headers
 
 install-libs: installdirs
 	$(SHELL) $(multi_basedir)/mkinstalldirs $(DESTDIR)$(toolexeclibdir)
-	$(LIBTOOL_INSTALL) $(INSTALL) libobjc$(libsuffix).la $(DESTDIR)$(toolexeclibdir);
+	$(LIBTOOL_INSTALL) $(INSTALL) libobjc$(libsuffix).la libgnuobjc_shared$(libsuffix).la $(DESTDIR)$(toolexeclibdir);
 	if [ "$(OBJC_BOEHM_GC)" ]; then \
 	  $(LIBTOOL_INSTALL) $(INSTALL) libobjc_gc$(libsuffix).la \
 				$(DESTDIR)$(toolexeclibdir);\
@@ -396,7 +402,7 @@ install-headers:
 check uninstall install-strip dist installcheck installdirs:
 
 mostlyclean:
-	-$(LIBTOOL_CLEAN) rm -f libobjc$(libsuffix).la libobjc_gc$(libsuffix).la *.lo
+	-$(LIBTOOL_CLEAN) rm -f libobjc$(libsuffix).la libgnuobjc_shared$(libsuffix).la libobjc_gc$(libsuffix).la *.lo
 	-rm -f runtime-info.h tmp-runtime.s *.o *.lo libobjc* xforward \
 		fflags *.aux *.cp *.dvi *.pdf *.fn *.info *.ky *.log *.pg \
 		*.toc *.tp *.vr *.html libobj.exp
