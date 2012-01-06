@@ -53,7 +53,7 @@
   "%{!static: -ldl}"
 
 #define CRYSTAX_LIB_SPEC \
-  "%{!static: -lcrystax}"
+  "%{!static: -lcrystax -Bdynamic -lstdc++ -llog}"
 
 #define ANDROID_STARTFILE_SPEC						\
   "%{!shared:"								\
