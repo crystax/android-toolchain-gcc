@@ -1,3 +1,92 @@
+2012-02-07  Andrew Stubbs  <ams@codesourcery.com>
+
+	GCC Linaro 4.6-2012.02 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-02-01  Andrew Stubbs  <ams@codesourcery.com>
+
+	Merge from FSF GCC 4.6.2 (svn branches/gcc-4_6-branch 183786).
+
+2012-01-20  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	Backport from mainline
+        2012-01-20  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	PR target/51819
+	* config/arm/arm.c (arm_print_operand): Correct output of alignment
+	hints for neon loads and stores.
+
+2012-01-16  Michael Hope  <michael.hope@linaro.org>
+
+	Backport from mainline r181210:
+
+	gcc/
+	2011-11-07  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	* config/arm/arm-cores.def: Add -mcpu=cortex-a7.
+	* config/arm/arm-tables.opt: Regenerate.
+	* config/arm/arm-tune.md: Likewise.
+	* config/arm/bpabi.h (BE8_LINK_SPEC): Add Cortex A-7.
+	* doc/invoke.texi: Document -mcpu=cortex-a7.
+
+2012-01-16  Michael Hope  <michael.hope@linaro.org>
+
+	Backport from mainline r182561:
+
+	2011-12-20  Richard Henderson  <rth@redhat.com>
+
+	gcc/
+	* config/arm/arm.md (*arm_cmpdi_unsigned): Enable for thumb2.
+	* config/arm/arm.c (arm_select_cc_mode): Use it.
+
+2012-01-16  Michael Hope  <michael.hope@linaro.org>
+
+	Backport from mainline r183011:
+
+	2012-01-09  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+	* config/arm/arm-cores.def (cortex-a15): Use cortex_a15_tune for
+	tuning parameters.
+	* config/arm/arm.c (arm_cortex_a15_tune): New static variable.
+
+2012-01-18  Michael Hope  <michael.hope@linaro.org>
+
+	Backport from mainline r183126:
+
+	2012-01-12  Ira Rosen  <irar@il.ibm.com>
+
+	gcc/
+	PR tree-optimization/51799
+	* tree-vect-patterns.c (vect_recog_over_widening_pattern): Check
+	that the last operation is a type demotion.
+
+	gcc/testsuite/
+	* gcc.dg/vect/pr51799.c: New test.
+	* gcc.dg/vect/vect-widen-shift-u8.c: Expect two widening shift
+	patterns.
+
+2012-01-12  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	LP 879725
+	Backport from mainline:
+
+	2012-01-02  Revital Eres  <revital.eres@linaro.org>
+
+	gcc/
+	* ddg.c (def_has_ccmode_p): New function.
+	(add_cross_iteration_register_deps,
+	create_ddg_dep_from_intra_loop_link): Call it.
+
+	gcc/testsuite/
+	* gcc.dg/sms-11.c: New file.
+
+2012-01-11  Andrew Stubbs  <ams@codesourcery.com>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-01-11  Andrew Stubbs  <ams@codesourcery.com>
 
 	GCC Linaro 4.6-2012.01 released.
