@@ -340,7 +340,7 @@ WARN_CXXFLAGS = \
 AM_CPPFLAGS = $(GLIBCXX_INCLUDES)
 
 # Cross compiler support.
-toolexeclib_LTLIBRARIES = libstdc++.la
+toolexeclib_LTLIBRARIES = libgnustl_shared.la
 @ENABLE_SYMVERS_TRUE@CLEANFILES = libstdc++-symbols.ver $(version_dep)
 @ENABLE_SYMVERS_DARWIN_TRUE@@ENABLE_SYMVERS_TRUE@version_arg = -Wl,-exported_symbols_list,libstdc++-symbols.explist
 @ENABLE_SYMVERS_FALSE@version_arg = 
@@ -594,6 +594,9 @@ clean-toolexeclibLTLIBRARIES:
 	  rm -f "$${dir}/so_locations"; \
 	done
 libstdc++.la: $(libstdc___la_OBJECTS) $(libstdc___la_DEPENDENCIES) 
+	$(libstdc___la_LINK) -rpath $(toolexeclibdir) $(libstdc___la_OBJECTS) $(libstdc___la_LIBADD) $(LIBS)
+
+libgnustl_shared.la: $(libstdc___la_OBJECTS) $(libstdc___la_DEPENDENCIES)
 	$(libstdc___la_LINK) -rpath $(toolexeclibdir) $(libstdc___la_OBJECTS) $(libstdc___la_LIBADD) $(LIBS)
 
 mostlyclean-compile:
