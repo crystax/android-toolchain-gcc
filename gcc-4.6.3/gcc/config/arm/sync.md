@@ -494,3 +494,36 @@
    (set_attr "conds" "unconditional")
    (set_attr "predicable" "no")])
 
+(define_expand "sync_lock_releasedi"
+ [(match_operand:DI 0 "memory_operand")
+  (match_operand:DI 1 "s_register_operand")]
+ "TARGET_HAVE_LDREXD && ARM_DOUBLEWORD_ALIGN && TARGET_HAVE_MEMORY_BARRIER"
+ { 
+   struct arm_sync_generator generator;
+   rtx tmp1 = gen_reg_rtx (DImode);
+   generator.op = arm_sync_generator_omn;
+   generator.u.omn = gen_arm_sync_lock_releasedi;
+   arm_expand_sync (DImode, &generator, operands[1], operands[0], NULL, tmp1);
+   DONE;
+ }
+)
+
+(define_insn "arm_sync_lock_releasedi"
+ [(set (match_operand:DI 2 "s_register_operand" "=&r")
+       (unspec_volatile:DI [(match_operand:DI 1 "arm_sync_memory_operand" "+Q")
+       			    (match_operand:DI 0 "s_register_operand" "r")]
+			    VUNSPEC_SYNC_RELEASE))
+  (clobber (reg:CC CC_REGNUM))
+  (clobber (match_scratch:SI 3 "=&r"))]
+  "TARGET_HAVE_LDREXD && ARM_DOUBLEWORD_ALIGN && TARGET_HAVE_MEMORY_BARRIER"
+ {
+  return arm_output_sync_insn (insn, operands);
+ }
+ [(set_attr "sync_memory"          "1")
+  (set_attr "sync_result" 	   "2")
+  (set_attr "sync_t1" 		   "2")
+  (set_attr "sync_t2" 		   "3")
+  (set_attr "sync_new_value" 	   "0")
+  (set_attr "conds"             "clob")
+  (set_attr "predicable"          "no")]
+)
