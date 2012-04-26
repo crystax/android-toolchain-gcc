@@ -450,7 +450,7 @@ static void add_dependence_list (rtx, rtx, int, enum reg_note);
 static void add_dependence_list_and_free (struct deps_desc *, rtx,
 					  rtx *, int, enum reg_note);
 static void delete_all_dependences (rtx);
-static void fixup_sched_groups (rtx);
+static void chain_to_prev_insn (rtx);
 
 static void flush_pending_lists (struct deps_desc *, rtx, int, int);
 static void sched_analyze_1 (struct deps_desc *, rtx, rtx);
@@ -1490,7 +1490,7 @@ delete_all_dependences (rtx insn)
    the previous nonnote insn.  */
 
 static void
-fixup_sched_groups (rtx insn)
+chain_to_prev_insn (rtx insn)
 {
   sd_iterator_def sd_it;
   dep_t dep;
@@ -1999,7 +1999,7 @@ setup_insn_reg_pressure_info (rtx insn)
   static struct reg_pressure_data *pressure_info;
   rtx link;
 
-  gcc_assert (sched_pressure_p);
+  gcc_assert (sched_pressure != SCHED_PRESSURE_NONE);
 
   if (! INSN_P (insn))
     return;
@@ -2030,8 +2030,9 @@ setup_insn_reg_pressure_info (rtx insn)
   len = sizeof (struct reg_pressure_data) * ira_reg_class_cover_size;
   pressure_info
     = INSN_REG_PRESSURE (insn) = (struct reg_pressure_data *) xmalloc (len);
-  INSN_MAX_REG_PRESSURE (insn) = (int *) xcalloc (ira_reg_class_cover_size
-						  * sizeof (int), 1);
+  if (sched_pressure == SCHED_PRESSURE_WEIGHTED)
+    INSN_MAX_REG_PRESSURE (insn) = (int *) xcalloc (ira_reg_class_cover_size
+						    * sizeof (int), 1);
   for (i = 0; i < ira_reg_class_cover_size; i++)
     {
       cl = ira_reg_class_cover[i];
@@ -2775,7 +2776,7 @@ sched_analyze_insn (struct deps_desc *deps, rtx x, rtx insn)
       || (NONJUMP_INSN_P (insn) && control_flow_insn_p (insn)))
     reg_pending_barrier = MOVE_BARRIER;
 
-  if (sched_pressure_p)
+  if (sched_pressure != SCHED_PRESSURE_NONE)
     {
       setup_insn_reg_uses (deps, insn);
       setup_insn_reg_pressure_info (insn);
@@ -3076,7 +3077,7 @@ sched_analyze_insn (struct deps_desc *deps, rtx x, rtx insn)
 	       instructions that follow seem like they should be part
 	       of the call group.
 
-	       Also, if we did, fixup_sched_groups() would move the
+	       Also, if we did, chain_to_prev_insn would move the
 	       deps of the debug insn to the call insn, modifying
 	       non-debug post-dependency counts of the debug insn
 	       dependencies and otherwise messing with the scheduling
@@ -3222,6 +3223,37 @@ call_may_noreturn_p (rtx insn)
   return true;
 }
 
+/* Return true if INSN should be made dependent on the previous instruction
+   group, and if all INSN's dependencies should be moved to the first
+   instruction of that group.  */
+
+static bool
+chain_to_prev_insn_p (rtx insn)
+{
+  rtx prev, x;
+
+  /* INSN forms a group with the previous instruction.  */
+  if (SCHED_GROUP_P (insn))
+    return true;
+
+  /* If the previous instruction clobbers a register R and this one sets
+     part of R, the clobber was added specifically to help us track the
+     liveness of R.  There's no point scheduling the clobber and leaving
+     INSN behind, especially if we move the clobber to another block.  */
+  prev = prev_nonnote_nondebug_insn (insn);
+  if (prev
+      && INSN_P (prev)
+      && BLOCK_FOR_INSN (prev) == BLOCK_FOR_INSN (insn)
+      && GET_CODE (PATTERN (prev)) == CLOBBER)
+    {
+      x = XEXP (PATTERN (prev), 0);
+      if (set_of (x, insn))
+	return true;
+    }
+
+  return false;
+}
+
 /* Analyze INSN with DEPS as a context.  */
 void
 deps_analyze_insn (struct deps_desc *deps, rtx insn)
@@ -3358,8 +3390,9 @@ deps_analyze_insn (struct deps_desc *deps, rtx insn)
 
   /* Fixup the dependencies in the sched group.  */
   if ((NONJUMP_INSN_P (insn) || JUMP_P (insn))
-      && SCHED_GROUP_P (insn) && !sel_sched_p ())
-    fixup_sched_groups (insn);
+      && chain_to_prev_insn_p (insn)
+      && !sel_sched_p ())
+    chain_to_prev_insn (insn);
 }
 
 /* Initialize DEPS for the new block beginning with HEAD.  */

@@ -1,3 +1,271 @@
+2012-03-12  Andrew Stubbs  <ams@codesourcery.com>
+
+	GCC Linaro 4.6-2012.03 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-03-08  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	Backport from mainline.
+        2012-02-28  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm.c (aapcs_vfp_is_call_or_return_candidate): Only use the machine
+	mode if there is no type information available.
+
+        2012-02-28  Ramana Radhakrishnan  <ramana.radhakrishnan@arm.com>
+
+	* gcc.target/arm/aapcs/vfp1.c (dg_do run): Run on all eabi variants.
+	* gcc.target/arm/aapcs/vfp2.c: Likewise.
+	* gcc.target/arm/aapcs/vfp3.c: Likewise.
+	* gcc.target/arm/aapcs/vfp4.c: Likewise.
+	* gcc.target/arm/aapcs/vfp5.c: Likewise.
+	* gcc.target/arm/aapcs/vfp6.c: Likewise.
+	* gcc.target/arm/aapcs/vfp7.c: Likewise.
+	* gcc.target/arm/aapcs/vfp8.c: Likewise.
+	* gcc.target/arm/aapcs/vfp9.c: Likewise.
+	* gcc.target/arm/aapcs/vfp10.c: Likewise.
+	* gcc.target/arm/aapcs/vfp11.c: Likewise.
+	* gcc.target/arm/aapcs/vfp12.c: Likewise.
+	* gcc.target/arm/aapcs/vfp13.c: Likewise.
+	* gcc.target/arm/aapcs/vfp14.c: Likewise.
+	* gcc.target/arm/aapcs/vfp15.c: Likewise.
+	* gcc.target/arm/aapcs/vfp16.c: Likewise.
+	* gcc.target/arm/aapcs/vfp17.c: Likewise.
+	* gcc.target/arm/neon-constants.h: New file.
+	* gcc.target/arm/aapcs/neon-constants.h: New file.
+	* gcc.target/arm/aapcs/neon-vect1.c: New test.
+	* gcc.target/arm/aapcs/neon-vect2.c: New test.
+	* gcc.target/arm/aapcs/neon-vect3.c: New test.
+	* gcc.target/arm/aapcs/neon-vect4.c: New test.
+	* gcc.target/arm/aapcs/neon-vect5.c: New test.
+	* gcc.target/arm/aapcs/neon-vect6.c: New test.
+	* gcc.target/arm/aapcs/neon-vect7.c: New test.
+	* gcc.target/arm/aapcs/neon-vect8.c: New test.
+
+2012-03-08  Michael Hope  <michael.hope@linaro.org>
+
+	Backport proposed patch:
+
+	gcc/
+	2012-01-31  Richard Henderson  <rth@redhat.com>
+
+	* longlong.h [arm] (umul_ppmm): Use umull.  Enable for thumb2.
+	[arm] (count_trailing_zeros): Use __builtin_ctz.
+
+2012-03-06  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	Backport from mainline:
+
+	gcc/
+	* config/arm/arm.c (arm_sat_operator_match): New function.
+	* config/arm/arm-protos.h (arm_sat_operator_match): Add prototype.
+	* config/arm/arm.md ("insn" attribute): Add "sat" value.
+	("SAT", "SATrev"): New code iterators.
+	("SATlo", "SAThi"): New code iterator attributes.
+	("*satsi_<SAT:code>"): New pattern.
+	("*satsi_<SAT:code>_shift"): Likewise.
+	* config/arm/predicates.md (sat_shift_operator): New.
+
+	gcc/testsuite/
+	* gcc.target/arm/sat-1.c: New test.
+
+2012-03-06  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	LP:942307
+    	gcc/
+    	PR target/50305
+    	* config/arm/arm.c (arm_legitimize_reload_address): Recognize
+    	output of a previous pass through legitimize_reload_address.
+    	Do not attempt to optimize addresses if the base register is
+    	equivalent to a constant.
+    	gcc/testsuite/
+    	PR target/50305
+    	* gcc.target/arm/pr50305.c: New test.
+
+2012-03-02  Andrew Stubbs  <ams@codesourcery.com>
+
+	Merge from FSF GCC 4.6.3 Release (svn branches/gcc-4_6-branch 108680).
+
+2012-02-24  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	Backport from mainline.
+	gcc/
+        2012-02-21  Matthew Gretton-Dann  <matthew.gretton-dann@arm.com>
+
+        Revert r183011
+        * config/arm/arm-cores.def (cortex-a15): Use generic Cortex tuning
+        parameters.
+        * config/arm/arm.c (arm_cortex_a15_tune): Remove.
+
+
+2012-02-24  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	LP:#922474
+	gcc/
+	* config/arm/sync.md (sync_lock_releasedi): Define.
+	(arm_sync_lock_releasedi): Likewise.
+	gcc/testsuite
+	Backport from mainline.
+        2012-01-30  Greta Yorsh  <Greta.Yorsh@arm.com>
+	* gcc.target/arm/di-longlong64-sync-withldrexd.c: Accept
+	new code generated for __sync_lock_release.
+
+2012-02-24  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+        2011-12-05  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	gcc/
+	* config/arm/arm.c (vfp3_const_double_for_fract_bits): Define.
+	* config/arm/arm-protos.h (vfp3_const_double_for_fract_bits): Declare.
+	* config/arm/constraints.md ("Dt"): New constraint.
+	* config/arm/predicates.md (const_double_vcvt_power_of_two_reciprocal):
+	New.
+	* config/arm/vfp.md (*arm_combine_vcvt_f32_s32): New.
+	(*arm_combine_vcvt_f32_u32): New.
+
+	LP:#900426
+
+	2011-12-06  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+        * config/arm/vfp.md (*combine_vcvt_f64_<FCVTI32typename>): Fix
+       formatting character for vmov.f64 case.
+
+2012-02-24  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	gcc/
+	* config/arm/arm.c (arm_print_operand): Remove wrongly merged code.
+	 (vfp3_const_double_for_fract_bits): Likewise.
+
+2012-02-20  Andrew Stubbs  <ams@codesourcery.com>
+
+	LP:#936863
+	gcc/
+	* config/arm/arm.c (arm_print_operand): Avoid null-pointer
+	dereference from MEM_SIZE.
+
+2012-02-08  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	gcc/
+	* config/arm/arm.c (arm_option_optimization_table): Enable
+	-fsched-pressure using -fsched-pressure-algorithm=model by
+	default when optimizing.
+
+2012-02-08  Richard Sandiford  <richard.sandiford@linaro.org>
+
+	gcc/
+	* sched-deps.c (fixup_sched_groups): Rename to...
+	(chain_to_prev_insn): ...this.
+	(chain_to_prev_insn_p): New function.
+	(deps_analyze_insn): Use it instead of SCHED_GROUP_P.
+
+2012-02-08  Richard Sandiford  <richard.sandiford@linaro.org>
+
+	gcc/
+	* sched-int.h (_haifa_insn_data): Move priority_status.
+	Add model_index.
+	(INSN_MODEL_INDEX): New macro.
+	* haifa-sched.c (insn_delay): New function.
+	(sched_regno_pressure_class): Update commentary.
+	(mark_regno_birth_or_death): Pass the liveness bitmap and
+	pressure array as arguments, instead of using curr_reg_live and
+	curr_reg_pressure.  Only update the pressure if the bit in the
+	liveness set has changed.
+	(initiate_reg_pressure_info): Always trust the live-in set for
+	SCHED_PRESSURE_MODEL.
+	(initiate_bb_reg_pressure_info): Update call to
+	mark_regno_birth_or_death.
+	(dep_list_size): Take the list as argument.
+	(calculate_reg_deaths): New function, extracted from...
+	(setup_insn_reg_pressure_info): ...here.
+	(MODEL_BAR): New macro.
+	(model_pressure_data, model_insn_info, model_pressure_limit)
+	(model_pressure_group): New structures.
+	(model_schedule, model_worklist, model_insns, model_num_insns)
+	(model_curr_point, model_before_pressure, model_next_priority):
+	New variables.
+	(MODEL_PRESSURE_DATA, MODEL_MAX_PRESSURE, MODEL_REF_PRESSURE)
+	(MODEL_INSN_INFO, MODEL_INSN): New macros.
+	(model_index, model_update_limit_points_in_group): New functions.
+	(model_update_limit_points, model_last_use_except): Likewise.
+	(model_start_update_pressure, model_update_pressure): Likewise.
+	(model_recompute, model_spill_cost, model_excess_group_cost): Likewise.
+	(model_excess_cost, model_dump_pressure_points): Likewise.
+	(model_set_excess_costs): Likewise.
+	(rank_for_schedule): Extend SCHED_PRIORITY_WEIGHTED ordering to
+	SCHED_PRIORITY_MODEL.  Use insn_delay.  Use the order in the model
+	schedule as an alternative tie-breaker.  Update the call to
+	dep_list_size.
+	(ready_sort): Call model_set_excess_costs.
+	(update_register_pressure): Update call to mark_regno_birth_or_death.
+	Rely on that function to check liveness rather than doing it here.
+	(model_classify_pressure, model_order_p, model_add_to_worklist_at)
+	(model_remove_from_worklist, model_add_to_worklist, model_promote_insn)
+	(model_add_to_schedule, model_analyze_insns, model_init_pressure_group)
+	(model_record_pressure, model_record_pressures): New functions.
+	(model_record_final_pressures, model_add_successors_to_worklist)
+	(model_promote_predecessors, model_choose_insn): Likewise.
+	(model_reset_queue_indices, model_dump_pressure_summary): Likewise.
+	(model_start_schedule, model_finalize_pressure_group): Likewise.
+	(model_end_schedule): Likewise.
+	(schedule_insn): Say when we're scheduling the next instruction
+	in the model schedule.
+	(schedule_insn): Handle SCHED_PRESSURE_MODEL.
+	(queue_to_ready): Do not add instructions that are
+	MAX_SCHED_READY_INSNS beyond the current point of the model schedule.
+	Always allow the next instruction in the model schedule to be added.
+	(debug_ready_list): Print the INSN_REG_PRESSURE_EXCESS_COST_CHANGE
+	and delay for SCHED_PRESSURE_MODEL too.
+	(prune_ready_list): Extend SCHED_PRIORITY_WEIGHTED handling to
+	SCHED_PRIORITY_MODEL, but also take the DFA into account.
+	(schedule_block): Call model_start_schedule and model_end_schedule.
+	Extend SCHED_PRIORITY_WEIGHTED stall handling to SCHED_PRIORITY_MODEL.
+	(sched_init): Extend INSN_REG_PRESSURE_EXCESS_COST_CHANGE handling
+	to SCHED_PRESSURE_MODEL, but don't allocate saved_reg_live or
+	region_ref_regs.
+	(sched_finish): Update accordingly.
+	(fix_tick_ready): Extend INSN_REG_PRESSURE_EXCESS_COST_CHANGE handling
+	to SCHED_PRESSURE_MODEL.
+	(add_jump_dependencies): Update call to dep_list_size.
+	(haifa_finish_h_i_d): Fix leak of max_reg_pressure.
+	(haifa_init_insn): Extend INSN_REG_PRESSURE_EXCESS_COST_CHANGE handling
+	to SCHED_PRESSURE_MODEL.
+	* sched-deps.c (init_insn_reg_pressure_info): Likewise, but don't
+	allocate INSN_MAX_REG_PRESSURE for SCHED_PRESSURE_MODEL.
+	(sched_analyze_insn): Extend INSN_REG_PRESSURE_EXCESS_COST_CHANGE
+	handling to SCHED_PRESSURE_MODEL.
+
+2012-02-08  Richard Sandiford  <richard.sandiford@linaro.org>
+
+	gcc/
+	* common.opt (fsched-pressure-algorithm=): New option.
+	* flag-types.h (sched_pressure_algorithm): New enum.
+	* sched-int.h (sched_pressure_p): Replace with...
+	(sched_pressure): ...this new variable.
+	* haifa-sched.c (sched_pressure_p): Replace with...
+	(sched_pressure): ...this new variable.
+	(sched_regno_pressure_class, rank_for_schedule, ready_sort)
+	(update_reg_and_insn_max_reg_pressure, schedule_insn)
+	(debug_ready_list, schedule_block, sched_init, sched_finish)
+	(fix_tick_ready, haifa_init_insn): Update accordingly.
+	* sched-deps.c (init_insn_reg_pressure_info): Likewise.
+	* sched-rgn.c (schedule_region): Likewise.
+
+2012-02-08  Richard Sandiford  <richard.sandiford@linaro.org>
+
+	gcc/
+	Backport from mainline:
+
+	2011-04-01  Bernd Schmidt  <bernds@codesourcery.com>
+
+	* haifa-sched.c (prune_ready_list): New function, broken out of
+	schedule_block.
+	(schedule_block): Use it.
+
+2012-02-07  Andrew Stubbs  <ams@codesourcery.com>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-02-07  Andrew Stubbs  <ams@codesourcery.com>
 
 	GCC Linaro 4.6-2012.02 released.
