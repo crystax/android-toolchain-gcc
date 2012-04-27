@@ -96,9 +96,6 @@ ACX_LT_HOST_FLAGS
 AC_SUBST(enable_shared)
 AC_SUBST(enable_static)
 
-# Eliminate -lstdc++ addition to postdeps for cross compiles.
-postdeps_CXX=`echo " $postdeps_CXX " | sed 's, -lstdc++ ,,g'`
-
 # Possibly disable most of the library.
 ## TODO: Consider skipping unncessary tests altogether in this case, rather
 ## than just ignoring the results.  Faster /and/ more correct, win win.
