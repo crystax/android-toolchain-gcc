@@ -61,3 +61,5 @@
 
 #define ANDROID_ENDFILE_SPEC \
   "%{!shared: crtend_android%O%s;: crtend_so%O%s}"
+
+#define REAL_LIBGCC_SPEC "-lgcc -lgcc_eh"
