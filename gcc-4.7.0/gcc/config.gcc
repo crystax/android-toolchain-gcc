@@ -611,7 +611,7 @@ case ${target} in
       extra_options="$extra_options linux.opt";;
   esac
   case $target in
-    *-*-*android*)
+    *-*-*android* | *-android-linux-*)
       tm_defines="$tm_defines DEFAULT_LIBC=LIBC_BIONIC"
       ;;
     *-*-*uclibc*)
@@ -635,7 +635,7 @@ case ${target} in
   esac
   # Enable compilation for Android by default for *android* targets.
   case $target in
-    *-*-*android*)
+    *-*-*android* | *-android-linux-*)
       tm_defines="$tm_defines ANDROID_DEFAULT=1"
       ;;
     *)
