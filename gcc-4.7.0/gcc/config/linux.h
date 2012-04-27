@@ -103,4 +103,4 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 /* Whether we have sincos that follows the GNU extension.  */
 #undef TARGET_HAS_SINCOS
-#define TARGET_HAS_SINCOS (OPTION_GLIBC || OPTION_BIONIC)
+#define TARGET_HAS_SINCOS OPTION_GLIBC
