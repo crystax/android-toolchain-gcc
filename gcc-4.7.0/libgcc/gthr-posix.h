@@ -88,6 +88,12 @@ typedef struct timespec __gthread_time_t;
 # define __GTHREAD_COND_INIT_FUNCTION __gthread_cond_init_function
 #endif
 
+#if defined(ANDROID) || defined(__ANDROID__)
+# if defined(GTHREAD_USE_WEAK)
+#  undef GTHREAD_USE_WEAK
+# endif
+#endif
+
 #if SUPPORTS_WEAK && GTHREAD_USE_WEAK
 # ifndef __gthrw_pragma
 #  define __gthrw_pragma(pragma)
