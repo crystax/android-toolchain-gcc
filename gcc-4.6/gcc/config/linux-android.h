@@ -49,17 +49,18 @@
   "%{!fexceptions:%{!fno-exceptions: -fno-exceptions}} "		\
   "%{!frtti:%{!fno-rtti: -fno-rtti}}"
 
-#define ANDROID_LIB_SPEC \
-  "%{!static: -ldl}"
-
 #define CRYSTAX_LIB_SPEC \
   "%{!static: -lcrystax -Bdynamic -lstdc++ -llog}"
 
+#define ANDROID_LIB_SPEC \
+  CRYSTAX_LIB_SPEC \
+  "%{!static: -ldl}"
+
 #define ANDROID_STARTFILE_SPEC						\
-  "%{!shared:"								\
-  "  %{static: crtbegin_static%O%s;: crtbegin_dynamic%O%s};: crtbegin_so%O%s}"
+  "%{shared: crtbegin_so%O%s;:"						\
+  "  %{static: crtbegin_static%O%s;: crtbegin_dynamic%O%s}}"
 
 #define ANDROID_ENDFILE_SPEC \
-  "%{!shared: crtend_android%O%s;: crtend_so%O%s}"
+  "%{shared: crtend_so%O%s;: crtend_android%O%s}"
 
 #define REAL_LIBGCC_SPEC "-lgcc -lgcc_eh"
