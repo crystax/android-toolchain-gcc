@@ -1531,6 +1531,27 @@ ${host_builddir}/gthr-posix.h: ${toplevel_srcdir}/libgcc/gthr-posix.h \
 	    -e 's/\(${uppercase}*USE_WEAK\)/_GLIBCXX_\1/g' \
 	    < $< > $@
 
+${toplevel_builddir}/libgcc/gthr-default.h:
+	mkdir -p ${toplevel_builddir}/libgcc
+	target_thread_file=`$(CXX) -v 2>&1 | sed -n 's/^Thread model: //p'`; \
+	case $$target_thread_file in \
+		aix)  thread_header=config/rs6000/gthr-aix.h ;; \
+		dce)  thread_header=config/pa/gthr-dce.h ;; \
+		lynx) thread_header=config/gthr-lynx.h ;; \
+		mipssde)  thread_header=config/mips/gthr-mipssde.h ;; \
+		posix)  thread_header=gthr-posix.h ;; \
+		rtems)  thread_header=config/gthr-rtems.h ;; \
+		single) thread_header=gthr-single.h ;; \
+		tpf)  thread_header=config/s390/gthr-tpf.h ;; \
+		vxworks)  thread_header=config/gthr-vxworks.h ;; \
+		win32)  thread_header=config/i386/gthr-win32.h ;; \
+	esac; \
+	if [ -f ${toplevel_srcdir}/libgcc/$$thread_header ]; then \
+		ln -s ${toplevel_srcdir}/libgcc/$$thread_header $@; \
+	else \
+		false; \
+	fi
+
 ${host_builddir}/gthr-default.h: ${toplevel_builddir}/libgcc/gthr-default.h \
 				   stamp-${host_alias}
 	sed -e 's/\(UNUSED\)/_GLIBCXX_\1/g' \
