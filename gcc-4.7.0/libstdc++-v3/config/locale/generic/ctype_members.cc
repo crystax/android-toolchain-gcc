@@ -129,6 +129,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     return __hi;
   }
 
+#ifndef __BIONIC__
   bool
   ctype<wchar_t>::
   do_is(mask __m, char_type __c) const
@@ -182,6 +183,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       ++__lo;
     return __lo;
   }
+#endif /* __BIONIC__ */
 
   wchar_t
   ctype<wchar_t>::
