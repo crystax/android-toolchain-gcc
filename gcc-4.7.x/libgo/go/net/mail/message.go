@@ -69,11 +69,12 @@ var dateLayouts []string
 func init() {
 	// Generate layouts based on RFC 5322, section 3.3.
 
-	dows := [...]string{"", "Mon, "}     // day-of-week
-	days := [...]string{"2", "02"}       // day = 1*2DIGIT
-	years := [...]string{"2006", "06"}   // year = 4*DIGIT / 2*DIGIT
-	seconds := [...]string{":05", ""}    // second
-	zones := [...]string{"-0700", "MST"} // zone = (("+" / "-") 4DIGIT) / "GMT" / ...
+	dows := [...]string{"", "Mon, "}   // day-of-week
+	days := [...]string{"2", "02"}     // day = 1*2DIGIT
+	years := [...]string{"2006", "06"} // year = 4*DIGIT / 2*DIGIT
+	seconds := [...]string{":05", ""}  // second
+	// "-0700 (MST)" is not in RFC 5322, but is common.
+	zones := [...]string{"-0700", "MST", "-0700 (MST)"} // zone = (("+" / "-") 4DIGIT) / "GMT" / ...
 
 	for _, dow := range dows {
 		for _, day := range days {
@@ -394,8 +395,7 @@ func (p *addrParser) consumeAtom(dot bool) (atom string, err error) {
 	i := 1
 	for ; i < p.len() && isAtext((*p)[i], dot); i++ {
 	}
-	// TODO(dsymonds): Remove the []byte() conversion here when 6g doesn't need it.
-	atom, *p = string([]byte((*p)[:i])), (*p)[i:]
+	atom, *p = string((*p)[:i]), (*p)[i:]
 	return atom, nil
 }
 

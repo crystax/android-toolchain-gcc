@@ -41,7 +41,6 @@ func ExampleContainsAny() {
 func ExampleCount() {
 	fmt.Println(strings.Count("cheese", "e"))
 	fmt.Println(strings.Count("five", "")) // before & after each rune
-
 	// Output:
 	// 3
 	// 5
@@ -60,7 +59,7 @@ func ExampleIndex() {
 	// -1
 }
 
-func ExampleRune() {
+func ExampleIndexRune() {
 	fmt.Println(strings.IndexRune("chicken", 'k'))
 	fmt.Println(strings.IndexRune("chicken", 'd'))
 	// Output:

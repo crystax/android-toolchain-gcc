@@ -230,8 +230,8 @@ ipa_print_node_jump_functions (FILE *f, struct cgraph_node *node)
 	continue;
 
       fprintf (f, "    callsite  %s/%i -> %s/%i : \n",
-	       cgraph_node_name (node), node->uid,
-	       cgraph_node_name (cs->callee), cs->callee->uid);
+	       xstrdup (cgraph_node_name (node)), node->uid,
+	       xstrdup (cgraph_node_name (cs->callee)), cs->callee->uid);
       ipa_print_node_jump_functions_for_edge (f, cs);
     }
 
@@ -865,8 +865,8 @@ compute_known_type_jump_func (tree op, struct ipa_jump_func *jfunc,
       || is_global_var (base))
     return;
 
-  if (detect_type_change (op, base, call, jfunc, offset)
-      || !TYPE_BINFO (TREE_TYPE (base)))
+  if (!TYPE_BINFO (TREE_TYPE (base))
+      || detect_type_change (op, base, call, jfunc, offset))
     return;
 
   jfunc->type = IPA_JF_KNOWN_TYPE;
@@ -1780,8 +1780,8 @@ ipa_make_edge_direct_to_target (struct cgraph_edge *ie, tree target)
       fprintf (dump_file, "ipa-prop: Discovered %s call to a known target "
 	       "(%s/%i -> %s/%i), for stmt ",
 	       ie->indirect_info->polymorphic ? "a virtual" : "an indirect",
-	       cgraph_node_name (ie->caller), ie->caller->uid,
-	       cgraph_node_name (ie->callee), ie->callee->uid);
+	       xstrdup (cgraph_node_name (ie->caller)), ie->caller->uid,
+	       xstrdup (cgraph_node_name (ie->callee)), ie->callee->uid);
       if (ie->call_stmt)
 	print_gimple_stmt (dump_file, ie->call_stmt, 2, TDF_SLIM);
       else

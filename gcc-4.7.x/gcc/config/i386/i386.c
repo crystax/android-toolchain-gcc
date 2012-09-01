@@ -47,6 +47,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "target-def.h"
 #include "common/common-target.h"
 #include "langhooks.h"
+#include "reload.h"
 #include "cgraph.h"
 #include "gimple.h"
 #include "dwarf2.h"
@@ -2185,7 +2186,7 @@ unsigned char ix86_arch_features[X86_ARCH_LAST];
 /* Feature tests against the various architecture variations, used to create
    ix86_arch_features based on the processor mask.  */
 static unsigned int initial_ix86_arch_features[X86_ARCH_LAST] = {
-  /* X86_ARCH_CMOVE: Conditional move was added for pentiumpro.  */
+  /* X86_ARCH_CMOV: Conditional move was added for pentiumpro.  */
   ~(m_386 | m_486 | m_PENT | m_K6),
 
   /* X86_ARCH_CMPXCHG: Compare and exchange was added for 80486.  */
@@ -3205,7 +3206,7 @@ ix86_option_override_internal (bool main_args_p)
 		   "large", "32");
 	  else if (TARGET_X32)
 	    error ("code model %qs not supported in x32 mode",
-		   "medium");
+		   "large");
 	  break;
 
 	case CM_32:
@@ -3423,7 +3424,7 @@ ix86_option_override_internal (bool main_args_p)
 	   -mtune (rather than -march) points us to a processor that has them.
 	   However, the VIA C3 gives a SIGILL, so we only do that for i686 and
 	   higher processors.  */
-	if (TARGET_CMOVE
+	if (TARGET_CMOV
 	    && (processor_alias_table[i].flags & (PTA_PREFETCH_SSE | PTA_SSE)))
 	  x86_prefetch_sse = true;
 	break;
@@ -3698,12 +3699,6 @@ ix86_option_override_internal (bool main_args_p)
 		 "for correctness", prefix, suffix);
       target_flags |= MASK_ACCUMULATE_OUTGOING_ARGS;
     }
-
-  /* For sane SSE instruction set generation we need fcomi instruction.
-     It is safe to enable all CMOVE instructions.  Also, RDRAND intrinsic
-     expands to a sequence that includes conditional move. */
-  if (TARGET_SSE || TARGET_RDRND)
-    TARGET_CMOVE = 1;
 
   /* Figure out what ASM_GENERATE_INTERNAL_LABEL builds as a prefix.  */
   {
@@ -8426,6 +8421,11 @@ ix86_frame_pointer_required (void)
   if (TARGET_32BIT_MS_ABI && cfun->calls_setjmp)
     return true;
 
+  /* Win64 SEH, very large frames need a frame-pointer as maximum stack
+     allocation is 4GB.  */
+  if (TARGET_64BIT_MS_ABI && get_frame_size () > SEH_MAX_FRAME_SIZE)
+    return true;
+
   /* In ix86_option_override_internal, TARGET_OMIT_LEAF_FRAME_POINTER
      turns off the frame pointer by default.  Turn it back on now if
      we've not got a leaf function.  */
@@ -8912,6 +8912,11 @@ ix86_compute_frame_layout (struct ix86_frame *frame)
   offset += frame->nregs * UNITS_PER_WORD;
   frame->reg_save_offset = offset;
 
+  /* On SEH target, registers are pushed just before the frame pointer
+     location.  */
+  if (TARGET_SEH)
+    frame->hard_frame_pointer_offset = offset;
+
   /* Align and set SSE register save area.  */
   if (frame->nsseregs)
     {
@@ -9003,9 +9008,12 @@ ix86_compute_frame_layout (struct ix86_frame *frame)
     {
       HOST_WIDE_INT diff;
 
-      /* If we can leave the frame pointer where it is, do so.  */
+      /* If we can leave the frame pointer where it is, do so.  Also, returns
+	 the establisher frame for __builtin_frame_address (0).  */
       diff = frame->stack_pointer_offset - frame->hard_frame_pointer_offset;
-      if (diff > 240 || (diff & 15) != 0)
+      if (diff <= SEH_MAX_FRAME_SIZE
+	  && (diff > 240 || (diff & 15) != 0)
+	  && !crtl->accesses_prior_frames)
 	{
 	  /* Ideally we'd determine what portion of the local stack frame
 	     (within the constraint of the lowest 240) is most heavily used.
@@ -10001,6 +10009,7 @@ ix86_expand_prologue (void)
   struct ix86_frame frame;
   HOST_WIDE_INT allocate;
   bool int_registers_saved;
+  bool sse_registers_saved;
 
   ix86_finalize_stack_realign_flags ();
 
@@ -10153,12 +10162,26 @@ ix86_expand_prologue (void)
       m->fs.realigned = true;
     }
 
+  int_registers_saved = (frame.nregs == 0);
+  sse_registers_saved = (frame.nsseregs == 0);
+
   if (frame_pointer_needed && !m->fs.fp_valid)
     {
       /* Note: AT&T enter does NOT have reversed args.  Enter is probably
          slower on all targets.  Also sdb doesn't like it.  */
       insn = emit_insn (gen_push (hard_frame_pointer_rtx));
       RTX_FRAME_RELATED_P (insn) = 1;
+
+      /* Push registers now, before setting the frame pointer
+	 on SEH target.  */
+      if (!int_registers_saved
+	  && TARGET_SEH
+	  && !frame.save_regs_using_mov)
+	{
+	  ix86_emit_save_regs ();
+	  int_registers_saved = true;
+	  gcc_assert (m->fs.sp_offset == frame.reg_save_offset);
+	}
 
       if (m->fs.sp_offset == frame.hard_frame_pointer_offset)
 	{
@@ -10171,8 +10194,6 @@ ix86_expand_prologue (void)
 	  m->fs.fp_valid = true;
 	}
     }
-
-  int_registers_saved = (frame.nregs == 0);
 
   if (!int_registers_saved)
     {
@@ -10248,6 +10269,27 @@ ix86_expand_prologue (void)
 	}
 
       current_function_static_stack_size = stack_size;
+    }
+
+  /* On SEH target with very large frame size, allocate an area to save
+     SSE registers (as the very large allocation won't be described).  */
+  if (TARGET_SEH
+      && frame.stack_pointer_offset > SEH_MAX_FRAME_SIZE
+      && !sse_registers_saved)
+    {
+      HOST_WIDE_INT sse_size =
+	frame.sse_reg_save_offset - frame.reg_save_offset;
+
+      gcc_assert (int_registers_saved);
+
+      /* No need to do stack checking as the area will be immediately
+	 written.  */
+      pro_epilogue_adjust_stack (stack_pointer_rtx, stack_pointer_rtx,
+			         GEN_INT (-sse_size), -1,
+				 m->fs.cfa_reg == stack_pointer_rtx);
+      allocate -= sse_size;
+      ix86_emit_save_sse_regs_using_mov (frame.sse_reg_save_offset);
+      sse_registers_saved = true;
     }
 
   /* The stack has already been decremented by the instruction calling us
@@ -10370,7 +10412,7 @@ ix86_expand_prologue (void)
 
   if (!int_registers_saved)
     ix86_emit_save_regs_using_mov (frame.reg_save_offset);
-  if (frame.nsseregs)
+  if (!sse_registers_saved)
     ix86_emit_save_sse_regs_using_mov (frame.sse_reg_save_offset);
 
   pic_reg_used = false;
@@ -10821,8 +10863,13 @@ ix86_expand_epilogue (int style)
 	}
 
       /* First step is to deallocate the stack frame so that we can
-	 pop the registers.  */
-      if (!m->fs.sp_valid)
+	 pop the registers.  Also do it on SEH target for very large
+	 frame as the emitted instructions aren't allowed by the ABI in
+	 epilogues.  */
+      if (!m->fs.sp_valid
+ 	  || (TARGET_SEH
+	      && (m->fs.sp_offset - frame.reg_save_offset
+		  >= SEH_MAX_FRAME_SIZE)))
 	{
 	  pro_epilogue_adjust_stack (stack_pointer_rtx, hard_frame_pointer_rtx,
 				     GEN_INT (m->fs.fp_offset
@@ -11918,6 +11965,64 @@ legitimate_pic_address_disp_p (rtx disp)
       disp = XVECEXP (disp, 0, 0);
       return (GET_CODE (disp) == SYMBOL_REF
 	      && SYMBOL_REF_TLS_MODEL (disp) == TLS_MODEL_LOCAL_DYNAMIC);
+    }
+
+  return false;
+}
+
+/* Our implementation of LEGITIMIZE_RELOAD_ADDRESS.  Returns a value to
+   replace the input X, or the original X if no replacement is called for.
+   The output parameter *WIN is 1 if the calling macro should goto WIN,
+   0 if it should not.  */
+
+bool
+ix86_legitimize_reload_address (rtx x,
+				enum machine_mode mode ATTRIBUTE_UNUSED,
+				int opnum, int type,
+				int ind_levels ATTRIBUTE_UNUSED)
+{
+  /* Reload can generate:
+
+     (plus:DI (plus:DI (unspec:DI [(const_int 0 [0])] UNSPEC_TP)
+		       (reg:DI 97))
+	      (reg:DI 2 cx))
+
+     This RTX is rejected from ix86_legitimate_address_p due to
+     non-strictness of base register 97.  Following this rejection, 
+     reload pushes all three components into separate registers,
+     creating invalid memory address RTX.
+
+     Following code reloads only the invalid part of the
+     memory address RTX.  */
+
+  if (GET_CODE (x) == PLUS
+      && REG_P (XEXP (x, 1))
+      && GET_CODE (XEXP (x, 0)) == PLUS
+      && REG_P (XEXP (XEXP (x, 0), 1)))
+    {
+      rtx base, index;
+      bool something_reloaded = false;
+
+      base = XEXP (XEXP (x, 0), 1);      
+      if (!REG_OK_FOR_BASE_STRICT_P (base))
+	{
+	  push_reload (base, NULL_RTX, &XEXP (XEXP (x, 0), 1), NULL,
+		       BASE_REG_CLASS, GET_MODE (x), VOIDmode, 0, 0,
+		       opnum, (enum reload_type)type);
+	  something_reloaded = true;
+	}
+
+      index = XEXP (x, 1);
+      if (!REG_OK_FOR_INDEX_STRICT_P (index))
+	{
+	  push_reload (index, NULL_RTX, &XEXP (x, 1), NULL,
+		       INDEX_REG_CLASS, GET_MODE (x), VOIDmode, 0, 0,
+		       opnum, (enum reload_type)type);
+	  something_reloaded = true;
+	}
+
+      gcc_assert (something_reloaded);
+      return true;
     }
 
   return false;
@@ -19704,7 +19809,7 @@ ix86_expand_vec_perm (rtx operands[])
 	  vt = force_reg (maskmode, vt);
 	  mask = gen_lowpart (maskmode, mask);
 	  if (maskmode == V8SImode)
-	    emit_insn (gen_avx2_permvarv8si (t1, vt, mask));
+	    emit_insn (gen_avx2_permvarv8si (t1, mask, vt));
 	  else
 	    emit_insn (gen_avx2_pshufbv32qi3 (t1, mask, vt));
 
@@ -19738,13 +19843,13 @@ ix86_expand_vec_perm (rtx operands[])
 	     the high bits of the shuffle elements.  No need for us to
 	     perform an AND ourselves.  */
 	  if (one_operand_shuffle)
-	    emit_insn (gen_avx2_permvarv8si (target, mask, op0));
+	    emit_insn (gen_avx2_permvarv8si (target, op0, mask));
 	  else
 	    {
 	      t1 = gen_reg_rtx (V8SImode);
 	      t2 = gen_reg_rtx (V8SImode);
-	      emit_insn (gen_avx2_permvarv8si (t1, mask, op0));
-	      emit_insn (gen_avx2_permvarv8si (t2, mask, op1));
+	      emit_insn (gen_avx2_permvarv8si (t1, op0, mask));
+	      emit_insn (gen_avx2_permvarv8si (t2, op1, mask));
 	      goto merge_two;
 	    }
 	  return;
@@ -19752,13 +19857,13 @@ ix86_expand_vec_perm (rtx operands[])
 	case V8SFmode:
 	  mask = gen_lowpart (V8SFmode, mask);
 	  if (one_operand_shuffle)
-	    emit_insn (gen_avx2_permvarv8sf (target, mask, op0));
+	    emit_insn (gen_avx2_permvarv8sf (target, op0, mask));
 	  else
 	    {
 	      t1 = gen_reg_rtx (V8SFmode);
 	      t2 = gen_reg_rtx (V8SFmode);
-	      emit_insn (gen_avx2_permvarv8sf (t1, mask, op0));
-	      emit_insn (gen_avx2_permvarv8sf (t2, mask, op1));
+	      emit_insn (gen_avx2_permvarv8sf (t1, op0, mask));
+	      emit_insn (gen_avx2_permvarv8sf (t2, op1, mask));
 	      goto merge_two;
 	    }
 	  return;
@@ -19771,17 +19876,17 @@ ix86_expand_vec_perm (rtx operands[])
 	  t2 = gen_reg_rtx (V8SImode);
 	  emit_insn (gen_avx_vec_concatv8si (t1, op0, op1));
 	  emit_insn (gen_avx_vec_concatv8si (t2, mask, mask));
-	  emit_insn (gen_avx2_permvarv8si (t1, t2, t1));
+	  emit_insn (gen_avx2_permvarv8si (t1, t1, t2));
 	  emit_insn (gen_avx_vextractf128v8si (target, t1, const0_rtx));
 	  return;
 
         case V4SFmode:
 	  t1 = gen_reg_rtx (V8SFmode);
-	  t2 = gen_reg_rtx (V8SFmode);
-	  mask = gen_lowpart (V4SFmode, mask);
+	  t2 = gen_reg_rtx (V8SImode);
+	  mask = gen_lowpart (V4SImode, mask);
 	  emit_insn (gen_avx_vec_concatv8sf (t1, op0, op1));
-	  emit_insn (gen_avx_vec_concatv8sf (t2, mask, mask));
-	  emit_insn (gen_avx2_permvarv8sf (t1, t2, t1));
+	  emit_insn (gen_avx_vec_concatv8si (t2, mask, mask));
+	  emit_insn (gen_avx2_permvarv8sf (t1, t1, t2));
 	  emit_insn (gen_avx_vextractf128v8sf (target, t1, const0_rtx));
 	  return;
 
@@ -26704,7 +26809,7 @@ static const struct builtin_description bdesc_args[] =
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_pbroadcastv2di, "__builtin_ia32_pbroadcastq128", IX86_BUILTIN_PBROADCASTQ128, UNKNOWN, (int) V2DI_FTYPE_V2DI },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permvarv8si, "__builtin_ia32_permvarsi256", IX86_BUILTIN_VPERMVARSI256, UNKNOWN, (int) V8SI_FTYPE_V8SI_V8SI },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permv4df, "__builtin_ia32_permdf256", IX86_BUILTIN_VPERMDF256, UNKNOWN, (int) V4DF_FTYPE_V4DF_INT },
-  { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permvarv8sf, "__builtin_ia32_permvarsf256", IX86_BUILTIN_VPERMVARSF256, UNKNOWN, (int) V8SF_FTYPE_V8SF_V8SF },
+  { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permvarv8sf, "__builtin_ia32_permvarsf256", IX86_BUILTIN_VPERMVARSF256, UNKNOWN, (int) V8SF_FTYPE_V8SF_V8SI },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permv4di, "__builtin_ia32_permdi256", IX86_BUILTIN_VPERMDI256, UNKNOWN, (int) V4DI_FTYPE_V4DI_INT },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_permv2ti, "__builtin_ia32_permti256", IX86_BUILTIN_VPERMTI256, UNKNOWN, (int) V4DI_FTYPE_V4DI_V4DI_INT },
   { OPTION_MASK_ISA_AVX2, CODE_FOR_avx2_extracti128, "__builtin_ia32_extract128i256", IX86_BUILTIN_VEXTRACT128I256, UNKNOWN, (int) V2DI_FTYPE_V4DI_INT },
@@ -28902,8 +29007,8 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       arg_adjust = 0;
       if (optimize
 	  || target == 0
-	  || GET_MODE (target) != tmode
-	  || !insn_p->operand[0].predicate (target, tmode))
+	  || !register_operand (target, tmode)
+	  || GET_MODE (target) != tmode)
 	target = gen_reg_rtx (tmode);
     }
 
@@ -31839,8 +31944,7 @@ ix86_handle_struct_attribute (tree *node, tree name,
   else
     type = node;
 
-  if (!(type && (TREE_CODE (*type) == RECORD_TYPE
-		 || TREE_CODE (*type) == UNION_TYPE)))
+  if (!(type && RECORD_OR_UNION_TYPE_P (*type)))
     {
       warning (OPT_Wattributes, "%qE attribute ignored",
 	       name);
@@ -31976,6 +32080,18 @@ x86_output_mi_thunk (FILE *file,
 {
   rtx this_param = x86_this_parameter (function);
   rtx this_reg, tmp, fnaddr;
+  unsigned int tmp_regno;
+
+  if (TARGET_64BIT)
+    tmp_regno = R10_REG;
+  else
+    {
+      unsigned int ccvt = ix86_get_callcvt (TREE_TYPE (function));
+      if ((ccvt & (IX86_CALLCVT_FASTCALL | IX86_CALLCVT_THISCALL)) != 0)
+	tmp_regno = AX_REG;
+      else
+	tmp_regno = CX_REG;
+    }
 
   emit_note (NOTE_INSN_PROLOGUE_END);
 
@@ -32002,7 +32118,7 @@ x86_output_mi_thunk (FILE *file,
 	{
 	  if (!x86_64_general_operand (delta_rtx, Pmode))
 	    {
-	      tmp = gen_rtx_REG (Pmode, R10_REG);
+	      tmp = gen_rtx_REG (Pmode, tmp_regno);
 	      emit_move_insn (tmp, delta_rtx);
 	      delta_rtx = tmp;
 	    }
@@ -32015,18 +32131,7 @@ x86_output_mi_thunk (FILE *file,
   if (vcall_offset)
     {
       rtx vcall_addr, vcall_mem, this_mem;
-      unsigned int tmp_regno;
 
-      if (TARGET_64BIT)
-	tmp_regno = R10_REG;
-      else
-	{
-	  unsigned int ccvt = ix86_get_callcvt (TREE_TYPE (function));
-	  if ((ccvt & (IX86_CALLCVT_FASTCALL | IX86_CALLCVT_THISCALL)) != 0)
-	    tmp_regno = AX_REG;
-	  else
-	    tmp_regno = CX_REG;
-	}
       tmp = gen_rtx_REG (Pmode, tmp_regno);
 
       this_mem = gen_rtx_MEM (ptr_mode, this_reg);
@@ -32101,6 +32206,19 @@ x86_output_mi_thunk (FILE *file,
     emit_jump_insn (gen_indirect_jump (fnaddr));
   else
     {
+      if (ix86_cmodel == CM_LARGE_PIC && SYMBOLIC_CONST (fnaddr))
+	fnaddr = legitimize_pic_address (fnaddr,
+					 gen_rtx_REG (Pmode, tmp_regno));
+
+      if (!sibcall_insn_operand (fnaddr, Pmode))
+	{
+	  tmp = gen_rtx_REG (Pmode, tmp_regno);
+	  if (GET_MODE (fnaddr) != Pmode)
+	    fnaddr = gen_rtx_ZERO_EXTEND (Pmode, fnaddr);
+	  emit_move_insn (tmp, fnaddr);
+	  fnaddr = tmp;
+	}
+
       tmp = gen_rtx_MEM (QImode, fnaddr);
       tmp = gen_rtx_CALL (VOIDmode, tmp, const0_rtx);
       tmp = emit_call_insn (tmp);
@@ -35804,7 +35922,7 @@ expand_vec_perm_pshufb (struct expand_vec_perm_d *d)
       else if (vmode == V32QImode)
 	emit_insn (gen_avx2_pshufbv32qi3 (target, op0, vperm));
       else
-	emit_insn (gen_avx2_permvarv8si (target, vperm, op0));
+	emit_insn (gen_avx2_permvarv8si (target, op0, vperm));
     }
   else
     {

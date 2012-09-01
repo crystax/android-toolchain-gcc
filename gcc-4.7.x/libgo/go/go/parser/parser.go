@@ -40,6 +40,13 @@ type parser struct {
 	tok token.Token // one token look-ahead
 	lit string      // token literal
 
+	// Error recovery
+	// (used to limit the number of calls to syncXXX functions
+	// w/o making scanning progress - avoids potential endless
+	// loops across multiple parser functions during error recovery)
+	syncPos token.Pos // last synchronization position
+	syncCnt int       // number of calls to syncXXX without progress
+
 	// Non-syntactic parser control
 	exprLev int // < 0: in control clause, >= 0: in expression
 
@@ -260,13 +267,13 @@ func (p *parser) consumeComment() (comment *ast.Comment, endline int) {
 
 // Consume a group of adjacent comments, add it to the parser's
 // comments list, and return it together with the line at which
-// the last comment in the group ends. An empty line or non-comment
-// token terminates a comment group.
+// the last comment in the group ends. A non-comment token or n
+// empty lines terminate a comment group.
 //
-func (p *parser) consumeCommentGroup() (comments *ast.CommentGroup, endline int) {
+func (p *parser) consumeCommentGroup(n int) (comments *ast.CommentGroup, endline int) {
 	var list []*ast.Comment
 	endline = p.file.Line(p.pos)
-	for p.tok == token.COMMENT && endline+1 >= p.file.Line(p.pos) {
+	for p.tok == token.COMMENT && p.file.Line(p.pos) <= endline+n {
 		var comment *ast.Comment
 		comment, endline = p.consumeComment()
 		list = append(list, comment)
@@ -307,7 +314,7 @@ func (p *parser) next() {
 		if p.file.Line(p.pos) == line {
 			// The comment is on same line as the previous token; it
 			// cannot be a lead comment but may be a line comment.
-			comment, endline = p.consumeCommentGroup()
+			comment, endline = p.consumeCommentGroup(0)
 			if p.file.Line(p.pos) != endline {
 				// The next token is on a different line, thus
 				// the last comment group is a line comment.
@@ -318,7 +325,7 @@ func (p *parser) next() {
 		// consume successor comments, if any
 		endline = -1
 		for p.tok == token.COMMENT {
-			comment, endline = p.consumeCommentGroup()
+			comment, endline = p.consumeCommentGroup(1)
 		}
 
 		if endline+1 == p.file.Line(p.pos) {
@@ -362,23 +369,103 @@ func (p *parser) expect(tok token.Token) token.Pos {
 // expectClosing is like expect but provides a better error message
 // for the common case of a missing comma before a newline.
 //
-func (p *parser) expectClosing(tok token.Token, construct string) token.Pos {
+func (p *parser) expectClosing(tok token.Token, context string) token.Pos {
 	if p.tok != tok && p.tok == token.SEMICOLON && p.lit == "\n" {
-		p.error(p.pos, "missing ',' before newline in "+construct)
+		p.error(p.pos, "missing ',' before newline in "+context)
 		p.next()
 	}
 	return p.expect(tok)
 }
 
 func (p *parser) expectSemi() {
+	// semicolon is optional before a closing ')' or '}'
 	if p.tok != token.RPAREN && p.tok != token.RBRACE {
-		p.expect(token.SEMICOLON)
+		if p.tok == token.SEMICOLON {
+			p.next()
+		} else {
+			p.errorExpected(p.pos, "';'")
+			syncStmt(p)
+		}
 	}
+}
+
+func (p *parser) atComma(context string) bool {
+	if p.tok == token.COMMA {
+		return true
+	}
+	if p.tok == token.SEMICOLON && p.lit == "\n" {
+		p.error(p.pos, "missing ',' before newline in "+context)
+		return true // "insert" the comma and continue
+
+	}
+	return false
 }
 
 func assert(cond bool, msg string) {
 	if !cond {
 		panic("go/parser internal error: " + msg)
+	}
+}
+
+// syncStmt advances to the next statement.
+// Used for synchronization after an error.
+//
+func syncStmt(p *parser) {
+	for {
+		switch p.tok {
+		case token.BREAK, token.CONST, token.CONTINUE, token.DEFER,
+			token.FALLTHROUGH, token.FOR, token.GO, token.GOTO,
+			token.IF, token.RETURN, token.SELECT, token.SWITCH,
+			token.TYPE, token.VAR:
+			// Return only if parser made some progress since last
+			// sync or if it has not reached 10 sync calls without
+			// progress. Otherwise consume at least one token to
+			// avoid an endless parser loop (it is possible that
+			// both parseOperand and parseStmt call syncStmt and
+			// correctly do not advance, thus the need for the
+			// invocation limit p.syncCnt).
+			if p.pos == p.syncPos && p.syncCnt < 10 {
+				p.syncCnt++
+				return
+			}
+			if p.pos > p.syncPos {
+				p.syncPos = p.pos
+				p.syncCnt = 0
+				return
+			}
+			// Reaching here indicates a parser bug, likely an
+			// incorrect token list in this function, but it only
+			// leads to skipping of possibly correct code if a
+			// previous error is present, and thus is preferred
+			// over a non-terminating parse.
+		case token.EOF:
+			return
+		}
+		p.next()
+	}
+}
+
+// syncDecl advances to the next declaration.
+// Used for synchronization after an error.
+//
+func syncDecl(p *parser) {
+	for {
+		switch p.tok {
+		case token.CONST, token.TYPE, token.VAR:
+			// see comments in syncStmt
+			if p.pos == p.syncPos && p.syncCnt < 10 {
+				p.syncCnt++
+				return
+			}
+			if p.pos > p.syncPos {
+				p.syncPos = p.pos
+				p.syncCnt = 0
+				return
+			}
+		case token.EOF:
+			return
+		}
+		p.next()
 	}
 }
 
@@ -522,9 +609,11 @@ func (p *parser) makeIdentList(list []ast.Expr) []*ast.Ident {
 	for i, x := range list {
 		ident, isIdent := x.(*ast.Ident)
 		if !isIdent {
-			pos := x.Pos()
-			p.errorExpected(pos, "identifier")
-			ident = &ast.Ident{NamePos: pos, Name: "_"}
+			if _, isBad := x.(*ast.BadExpr); !isBad {
+				// only report error if it's a new one
+				p.errorExpected(x.Pos(), "identifier")
+			}
+			ident = &ast.Ident{NamePos: x.Pos(), Name: "_"}
 		}
 		idents[i] = ident
 	}
@@ -538,10 +627,10 @@ func (p *parser) parseFieldDecl(scope *ast.Scope) *ast.Field {
 
 	doc := p.leadComment
 
-	// fields
+	// FieldDecl
 	list, typ := p.parseVarList(false)
 
-	// optional tag
+	// Tag
 	var tag *ast.BasicLit
 	if p.tok == token.STRING {
 		tag = &ast.BasicLit{ValuePos: p.pos, Kind: p.tok, Value: p.lit}
@@ -556,7 +645,6 @@ func (p *parser) parseFieldDecl(scope *ast.Scope) *ast.Field {
 	} else {
 		// ["*"] TypeName (AnonymousField)
 		typ = list[0] // we always have at least one element
-		p.resolve(typ)
 		if n := len(list); n > 1 || !isTypeName(deref(typ)) {
 			pos := typ.Pos()
 			p.errorExpected(pos, "anonymous field")
@@ -568,6 +656,7 @@ func (p *parser) parseFieldDecl(scope *ast.Scope) *ast.Field {
 
 	field := &ast.Field{Doc: doc, Names: idents, Type: typ, Tag: tag, Comment: p.lineComment}
 	p.declare(field, nil, scope, ast.Var, idents...)
+	p.resolve(typ)
 
 	return field
 }
@@ -610,12 +699,15 @@ func (p *parser) parsePointerType() *ast.StarExpr {
 	return &ast.StarExpr{Star: star, X: base}
 }
 
+// If the result is an identifier, it is not resolved.
 func (p *parser) tryVarType(isParam bool) ast.Expr {
 	if isParam && p.tok == token.ELLIPSIS {
 		pos := p.pos
 		p.next()
 		typ := p.tryIdentOrType(isParam) // don't use parseType so we can provide better error message
-		if typ == nil {
+		if typ != nil {
+			p.resolve(typ)
+		} else {
 			p.error(pos, "'...' parameter is missing type")
 			typ = &ast.BadExpr{From: pos, To: p.pos}
 		}
@@ -624,6 +716,7 @@ func (p *parser) tryVarType(isParam bool) ast.Expr {
 	return p.tryIdentOrType(false)
 }
 
+// If the result is an identifier, it is not resolved.
 func (p *parser) parseVarType(isParam bool) ast.Expr {
 	typ := p.tryVarType(isParam)
 	if typ == nil {
@@ -635,6 +728,7 @@ func (p *parser) parseVarType(isParam bool) ast.Expr {
 	return typ
 }
 
+// If any of the results are identifiers, they are not resolved.
 func (p *parser) parseVarList(isParam bool) (list []ast.Expr, typ ast.Expr) {
 	if p.trace {
 		defer un(trace(p, "VarList"))
@@ -655,9 +749,7 @@ func (p *parser) parseVarList(isParam bool) (list []ast.Expr, typ ast.Expr) {
 	}
 
 	// if we had a list of identifiers, it must be followed by a type
-	if typ = p.tryVarType(isParam); typ != nil {
-		p.resolve(typ)
-	}
+	typ = p.tryVarType(isParam)
 
 	return
 }
@@ -667,7 +759,10 @@ func (p *parser) parseParameterList(scope *ast.Scope, ellipsisOk bool) (params [
 		defer un(trace(p, "ParameterList"))
 	}
 
+	// ParameterDecl
 	list, typ := p.parseVarList(ellipsisOk)
+
+	// analyze case
 	if typ != nil {
 		// IdentifierList Type
 		idents := p.makeIdentList(list)
@@ -676,10 +771,10 @@ func (p *parser) parseParameterList(scope *ast.Scope, ellipsisOk bool) (params [
 		// Go spec: The scope of an identifier denoting a function
 		// parameter or result variable is the function body.
 		p.declare(field, nil, scope, ast.Var, idents...)
+		p.resolve(typ)
 		if p.tok == token.COMMA {
 			p.next()
 		}
-
 		for p.tok != token.RPAREN && p.tok != token.EOF {
 			idents := p.parseIdentList()
 			typ := p.parseVarType(ellipsisOk)
@@ -688,18 +783,18 @@ func (p *parser) parseParameterList(scope *ast.Scope, ellipsisOk bool) (params [
 			// Go spec: The scope of an identifier denoting a function
 			// parameter or result variable is the function body.
 			p.declare(field, nil, scope, ast.Var, idents...)
-			if p.tok != token.COMMA {
+			p.resolve(typ)
+			if !p.atComma("parameter list") {
 				break
 			}
 			p.next()
 		}
-
 	} else {
 		// Type { "," Type } (anonymous parameters)
 		params = make([]*ast.Field, len(list))
-		for i, x := range list {
-			p.resolve(x)
-			params[i] = &ast.Field{Type: x}
+		for i, typ := range list {
+			p.resolve(typ)
+			params[i] = &ast.Field{Type: typ}
 		}
 	}
 
@@ -991,19 +1086,19 @@ func (p *parser) parseOperand(lhs bool) ast.Expr {
 
 	case token.FUNC:
 		return p.parseFuncTypeOrLit()
-
-	default:
-		if typ := p.tryIdentOrType(true); typ != nil {
-			// could be type for composite literal or conversion
-			_, isIdent := typ.(*ast.Ident)
-			assert(!isIdent, "type cannot be identifier")
-			return typ
-		}
 	}
 
+	if typ := p.tryIdentOrType(true); typ != nil {
+		// could be type for composite literal or conversion
+		_, isIdent := typ.(*ast.Ident)
+		assert(!isIdent, "type cannot be identifier")
+		return typ
+	}
+
+	// we have an error
 	pos := p.pos
 	p.errorExpected(pos, "operand")
-	p.next() // make progress
+	syncStmt(p)
 	return &ast.BadExpr{From: pos, To: p.pos}
 }
 
@@ -1078,7 +1173,7 @@ func (p *parser) parseCallOrConversion(fun ast.Expr) *ast.CallExpr {
 			ellipsis = p.pos
 			p.next()
 		}
-		if p.tok != token.COMMA {
+		if !p.atComma("argument list") {
 			break
 		}
 		p.next()
@@ -1118,7 +1213,7 @@ func (p *parser) parseElementList() (list []ast.Expr) {
 
 	for p.tok != token.RBRACE && p.tok != token.EOF {
 		list = append(list, p.parseElement(true))
-		if p.tok != token.COMMA {
+		if !p.atComma("composite literal") {
 			break
 		}
 		p.next()
@@ -1262,8 +1357,8 @@ L:
 				x = p.parseTypeAssertion(p.checkExpr(x))
 			default:
 				pos := p.pos
-				p.next() // make progress
 				p.errorExpected(pos, "selector or type assertion")
+				p.next() // make progress
 				x = &ast.BadExpr{From: pos, To: p.pos}
 			}
 		case token.LBRACK:
@@ -1471,7 +1566,10 @@ func (p *parser) parseCallExpr() *ast.CallExpr {
 	if call, isCall := x.(*ast.CallExpr); isCall {
 		return call
 	}
-	p.errorExpected(x.Pos(), "function/method call")
+	if _, isBad := x.(*ast.BadExpr); !isBad {
+		// only report error if it's a new one
+		p.errorExpected(x.Pos(), "function/method call")
+	}
 	return nil
 }
 
@@ -1862,7 +1960,7 @@ func (p *parser) parseStmt() (s ast.Stmt) {
 
 	switch p.tok {
 	case token.CONST, token.TYPE, token.VAR:
-		s = &ast.DeclStmt{Decl: p.parseDecl()}
+		s = &ast.DeclStmt{Decl: p.parseDecl(syncStmt)}
 	case
 		// tokens that may start an expression
 		token.IDENT, token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING, token.FUNC, token.LPAREN, // operands
@@ -1904,7 +2002,7 @@ func (p *parser) parseStmt() (s ast.Stmt) {
 		// no statement found
 		pos := p.pos
 		p.errorExpected(pos, "statement")
-		p.next() // make progress
+		syncStmt(p)
 		s = &ast.BadStmt{From: pos, To: p.pos}
 	}
 
@@ -2095,8 +2193,13 @@ func (p *parser) parseReceiver(scope *ast.Scope) *ast.FieldList {
 	recv := par.List[0]
 	base := deref(recv.Type)
 	if _, isIdent := base.(*ast.Ident); !isIdent {
-		p.errorExpected(base.Pos(), "(unqualified) identifier")
-		par.List = []*ast.Field{{Type: &ast.BadExpr{From: recv.Pos(), To: recv.End()}}}
+		if _, isBad := base.(*ast.BadExpr); !isBad {
+			// only report error if it's a new one
+			p.errorExpected(base.Pos(), "(unqualified) identifier")
+		}
+		par.List = []*ast.Field{
+			{Type: &ast.BadExpr{From: recv.Pos(), To: recv.End()}},
+		}
 	}
 
 	return par
@@ -2152,7 +2255,7 @@ func (p *parser) parseFuncDecl() *ast.FuncDecl {
 	return decl
 }
 
-func (p *parser) parseDecl() ast.Decl {
+func (p *parser) parseDecl(sync func(*parser)) ast.Decl {
 	if p.trace {
 		defer un(trace(p, "Declaration"))
 	}
@@ -2174,9 +2277,8 @@ func (p *parser) parseDecl() ast.Decl {
 	default:
 		pos := p.pos
 		p.errorExpected(pos, "declaration")
-		p.next() // make progress
-		decl := &ast.BadDecl{From: pos, To: p.pos}
-		return decl
+		sync(p)
+		return &ast.BadDecl{From: pos, To: p.pos}
 	}
 
 	return p.parseGenDecl(p.tok, f)
@@ -2215,7 +2317,7 @@ func (p *parser) parseFile() *ast.File {
 		if p.mode&ImportsOnly == 0 {
 			// rest of package body
 			for p.tok != token.EOF {
-				decls = append(decls, p.parseDecl())
+				decls = append(decls, p.parseDecl(syncDecl))
 			}
 		}
 	}

@@ -4216,10 +4216,11 @@ check_tag_decl (cp_decl_specifier_seq *declspecs)
         error ("%<constexpr%> cannot be used for type declarations");
     }
 
-  if (declspecs->attributes)
+  if (declspecs->attributes && declared_type)
     {
       location_t loc = input_location;
-      if (!CLASSTYPE_TEMPLATE_INSTANTIATION (declared_type))
+      if (!CLASS_TYPE_P (declared_type)
+	  || !CLASSTYPE_TEMPLATE_INSTANTIATION (declared_type))
 	/* For a non-template class, use the name location; for a template
 	   class (an explicit instantiation), use the current location.  */
 	input_location = location_of (declared_type);
@@ -4419,7 +4420,8 @@ start_decl (const cp_declarator *declarator,
     }
 
   /* If #pragma weak was used, mark the decl weak now.  */
-  maybe_apply_pragma_weak (decl);
+  if (!processing_template_decl)
+    maybe_apply_pragma_weak (decl);
 
   if (TREE_CODE (decl) == FUNCTION_DECL
       && DECL_DECLARED_INLINE_P (decl)
@@ -10574,6 +10576,17 @@ check_default_argument (tree decl, tree arg)
       return error_mark_node;
     }
 
+  if (warn_zero_as_null_pointer_constant
+      && c_inhibit_evaluation_warnings == 0
+      && (TYPE_PTR_P (decl_type) || TYPE_PTR_TO_MEMBER_P (decl_type))
+      && null_ptr_cst_p (arg)
+      && !NULLPTR_TYPE_P (TREE_TYPE (arg)))
+    {
+      warning (OPT_Wzero_as_null_pointer_constant,
+	       "zero as null pointer constant");
+      return nullptr_node;
+    }
+
   /* [dcl.fct.default]
 
      Local variables shall not be used in default argument
@@ -12333,6 +12346,12 @@ finish_enum_value_list (tree enumtype)
   /* Fix up all variant types of this enum type.  */
   for (t = TYPE_MAIN_VARIANT (enumtype); t; t = TYPE_NEXT_VARIANT (t))
     TYPE_VALUES (t) = TYPE_VALUES (enumtype);
+
+  if (at_class_scope_p ()
+      && COMPLETE_TYPE_P (current_class_type)
+      && UNSCOPED_ENUM_P (enumtype))
+    insert_late_enum_def_into_classtype_sorted_fields (enumtype,
+						       current_class_type);
 
   /* Finish debugging output for this type.  */
   rest_of_type_compilation (enumtype, namespace_bindings_p ());

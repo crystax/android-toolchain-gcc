@@ -1838,7 +1838,7 @@ decay_conversion (tree exp)
   if (error_operand_p (exp))
     return error_mark_node;
 
-  if (NULLPTR_TYPE_P (type))
+  if (NULLPTR_TYPE_P (type) && !TREE_SIDE_EFFECTS (exp))
     return nullptr_node;
 
   /* build_c_cast puts on a NOP_EXPR to make the result not an lvalue.
@@ -1873,6 +1873,14 @@ decay_conversion (tree exp)
 	  && ! (TREE_CODE (exp) == CONSTRUCTOR && TREE_STATIC (exp)))
 	{
 	  error ("invalid use of non-lvalue array");
+	  return error_mark_node;
+	}
+
+      /* Don't let an array compound literal decay to a pointer.  It can
+	 still be used to initialize an array or bind to a reference.  */
+      if (TREE_CODE (exp) == TARGET_EXPR)
+	{
+	  error ("taking address of temporary array");
 	  return error_mark_node;
 	}
 
@@ -2410,6 +2418,11 @@ lookup_destructor (tree object, tree scope, tree dtor_name)
 			tf_warning_or_error);
   expr = (adjust_result_of_qualified_name_lookup
 	  (expr, dtor_type, object_type));
+  if (scope == NULL_TREE)
+    /* We need to call adjust_result_of_qualified_name_lookup in case the
+       destructor names a base class, but we unset BASELINK_QUALIFIED_P so
+       that we still get virtual function binding.  */
+    BASELINK_QUALIFIED_P (expr) = false;
   return expr;
 }
 
@@ -8283,9 +8296,9 @@ cp_apply_type_quals_to_decl (int type_quals, tree decl)
      constructor can produce constant init, so rely on cp_finish_decl to
      clear TREE_READONLY if the variable has non-constant init.  */
 
-  /* If the type has a mutable component, that component might be
-     modified.  */
-  if (TYPE_HAS_MUTABLE_P (type))
+  /* If the type has (or might have) a mutable component, that component
+     might be modified.  */
+  if (TYPE_HAS_MUTABLE_P (type) || !COMPLETE_TYPE_P (type))
     type_quals &= ~TYPE_QUAL_CONST;
 
   c_apply_type_quals_to_decl (type_quals, decl);
