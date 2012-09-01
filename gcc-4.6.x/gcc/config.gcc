@@ -177,7 +177,12 @@
 #  configure_default_options
 #			Set to an initializer for configure_default_options
 #			in configargs.h, based on --with-cpu et cetera.
-
+#
+#  target_type_format_char 
+#  			The default character to be used for formatting
+#			the attribute in a
+#			.type symbol_name, ${t_t_f_c}<property>
+#			directive.
 # The following variables are used in each case-construct to build up the
 # outgoing variables:
 #
@@ -219,6 +224,7 @@ default_gnu_indirect_function=no
 target_gtfiles=
 need_64bit_hwint=
 need_64bit_isa=
+target_type_format_char='@'
 
 # Don't carry these over build->host->target.  Please.
 xm_file=
@@ -312,6 +318,7 @@ am33_2.0-*-linux*)
 arm*-*-*)
 	cpu_type=arm
 	extra_headers="mmintrin.h arm_neon.h"
+	target_type_format_char='%'
 	c_target_objs="arm-c.o"
 	cxx_target_objs="arm-c.o"
 	;;
@@ -817,7 +824,7 @@ arm*-*-netbsd*)
 arm*-*-linux*)			# ARM GNU/Linux with ELF
 	tm_file="dbxelf.h elfos.h gnu-user.h linux.h linux-android.h glibc-stdint.h arm/elf.h arm/linux-gas.h arm/linux-elf.h"
 	case $target in
-	arm*b-*)
+	arm*b-*-linux*)
 		tm_defines="${tm_defines} TARGET_BIG_ENDIAN_DEFAULT=1"
 		;;
 	esac
@@ -925,7 +932,7 @@ avr-*-rtems*)
 	extra_objs="avr-devices.o"
 	;;
 avr-*-*)
-	tm_file="avr/avr.h dbxelf.h newlib-stdint.h"
+	tm_file="avr/avr.h dbxelf.h avr/avr-stdint.h"
 	use_gcc_stdint=wrap
 	extra_gcc_objs="driver-avr.o avr-devices.o"
 	extra_objs="avr-devices.o"

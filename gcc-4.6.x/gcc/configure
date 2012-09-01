@@ -4843,7 +4843,7 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $acx_cv_cc_gcc_supports_ada" >&5
 $as_echo "$acx_cv_cc_gcc_supports_ada" >&6; }
 
-if test x$GNATBIND != xno && test x$GNATMAKE != xno && test x$acx_cv_cc_gcc_supports_ada != xno; then
+if test "x$GNATBIND" != xno && test "x$GNATMAKE" != xno && test x$acx_cv_cc_gcc_supports_ada != xno; then
   have_gnat=yes
 else
   have_gnat=no
@@ -25228,7 +25228,7 @@ else
   then gcc_cv_as_gnu_unique_object=yes
 fi
   elif test x$gcc_cv_as != x; then
-    echo '.type foo, @gnu_unique_object' > conftest.s
+    echo '.type foo, '$target_type_format_char'gnu_unique_object' > conftest.s
     if { ac_try='$gcc_cv_as $gcc_cv_as_flags  -o conftest.o conftest.s >&5'
   { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
   (eval $ac_try) 2>&5
@@ -25247,7 +25247,8 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_as_gnu_unique_object" >&5
 $as_echo "$gcc_cv_as_gnu_unique_object" >&6; }
 if test $gcc_cv_as_gnu_unique_object = yes; then
-  # Also check for ld.so support, i.e. glibc 2.11 or higher.
+  # We need to unquote above to to use the definition from config.gcc.
+# Also check for ld.so support, i.e. glibc 2.11 or higher.
    if test x$host = x$build -a x$host = x$target &&
        ldd --version 2>/dev/null &&
        glibcver=`ldd --version 2>/dev/null | sed 's/.* //;q'`; then

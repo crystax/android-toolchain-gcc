@@ -2056,6 +2056,11 @@ gfc_add_loop_ss_code (gfc_loopinfo * loop, gfc_ss * ss, bool subscript,
   gfc_se se;
   int n;
 
+  /* Don't evaluate the arguments for realloc_lhs_loop_for_fcn_call; otherwise,
+     arguments could get evaluated multiple times.  */
+  if (ss->is_alloc_lhs)
+    return;
+
   /* TODO: This can generate bad code if there are ordering dependencies,
      e.g., a callee allocated function and an unknown size constructor.  */
   gcc_assert (ss != NULL);
@@ -7548,7 +7553,7 @@ gfc_walk_elemental_function_args (gfc_ss * ss, gfc_actual_arglist *arg,
   scalar = 1;
   for (; arg; arg = arg->next)
     {
-      if (!arg->expr)
+      if (!arg->expr || arg->expr->expr_type == EXPR_NULL)
 	continue;
 
       newss = gfc_walk_subexpr (head, arg->expr);

@@ -46,6 +46,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "target-def.h"
 #include "langhooks.h"
+#include "reload.h"
 #include "cgraph.h"
 #include "gimple.h"
 #include "dwarf2.h"
@@ -2094,7 +2095,7 @@ unsigned char ix86_arch_features[X86_ARCH_LAST];
 /* Feature tests against the various architecture variations, used to create
    ix86_arch_features based on the processor mask.  */
 static unsigned int initial_ix86_arch_features[X86_ARCH_LAST] = {
-  /* X86_ARCH_CMOVE: Conditional move was added for pentiumpro.  */
+  /* X86_ARCH_CMOV: Conditional move was added for pentiumpro.  */
   ~(m_386 | m_486 | m_PENT | m_K6),
 
   /* X86_ARCH_CMPXCHG: Compare and exchange was added for 80486.  */
@@ -3811,7 +3812,7 @@ ix86_option_override_internal (bool main_args_p)
 	   -mtune (rather than -march) points us to a processor that has them.
 	   However, the VIA C3 gives a SIGILL, so we only do that for i686 and
 	   higher processors.  */
-	if (TARGET_CMOVE
+	if (TARGET_CMOV
 	    && (processor_alias_table[i].flags & (PTA_PREFETCH_SSE | PTA_SSE)))
 	  x86_prefetch_sse = true;
 	break;
@@ -4180,12 +4181,6 @@ ix86_option_override_internal (bool main_args_p)
 		 "for correctness", prefix, suffix);
       target_flags |= MASK_ACCUMULATE_OUTGOING_ARGS;
     }
-
-  /* For sane SSE instruction set generation we need fcomi instruction.
-     It is safe to enable all CMOVE instructions.  Also, RDRAND intrinsic
-     expands to a sequence that includes conditional move. */
-  if (TARGET_SSE || TARGET_RDRND)
-    TARGET_CMOVE = 1;
 
   /* Figure out what ASM_GENERATE_INTERNAL_LABEL builds as a prefix.  */
   {
@@ -12163,6 +12158,64 @@ legitimate_pic_address_disp_p (rtx disp)
       disp = XVECEXP (disp, 0, 0);
       return (GET_CODE (disp) == SYMBOL_REF
 	      && SYMBOL_REF_TLS_MODEL (disp) == TLS_MODEL_LOCAL_DYNAMIC);
+    }
+
+  return false;
+}
+
+/* Our implementation of LEGITIMIZE_RELOAD_ADDRESS.  Returns a value to
+   replace the input X, or the original X if no replacement is called for.
+   The output parameter *WIN is 1 if the calling macro should goto WIN,
+   0 if it should not.  */
+
+bool
+ix86_legitimize_reload_address (rtx x,
+				enum machine_mode mode ATTRIBUTE_UNUSED,
+				int opnum, int type,
+				int ind_levels ATTRIBUTE_UNUSED)
+{
+  /* Reload can generate:
+
+     (plus:DI (plus:DI (unspec:DI [(const_int 0 [0])] UNSPEC_TP)
+		       (reg:DI 97))
+	      (reg:DI 2 cx))
+
+     This RTX is rejected from ix86_legitimate_address_p due to
+     non-strictness of base register 97.  Following this rejection, 
+     reload pushes all three components into separate registers,
+     creating invalid memory address RTX.
+
+     Following code reloads only the invalid part of the
+     memory address RTX.  */
+
+  if (GET_CODE (x) == PLUS
+      && REG_P (XEXP (x, 1))
+      && GET_CODE (XEXP (x, 0)) == PLUS
+      && REG_P (XEXP (XEXP (x, 0), 1)))
+    {
+      rtx base, index;
+      bool something_reloaded = false;
+
+      base = XEXP (XEXP (x, 0), 1);      
+      if (!REG_OK_FOR_BASE_STRICT_P (base))
+	{
+	  push_reload (base, NULL_RTX, &XEXP (XEXP (x, 0), 1), NULL,
+		       BASE_REG_CLASS, GET_MODE (x), VOIDmode, 0, 0,
+		       opnum, (enum reload_type)type);
+	  something_reloaded = true;
+	}
+
+      index = XEXP (x, 1);
+      if (!REG_OK_FOR_INDEX_STRICT_P (index))
+	{
+	  push_reload (index, NULL_RTX, &XEXP (x, 1), NULL,
+		       INDEX_REG_CLASS, GET_MODE (x), VOIDmode, 0, 0,
+		       opnum, (enum reload_type)type);
+	  something_reloaded = true;
+	}
+
+      gcc_assert (something_reloaded);
+      return true;
     }
 
   return false;
@@ -27177,8 +27230,8 @@ ix86_expand_special_args_builtin (const struct builtin_description *d,
       arg_adjust = 0;
       if (optimize
 	  || target == 0
-	  || GET_MODE (target) != tmode
-	  || !insn_p->operand[0].predicate (target, tmode))
+	  || !register_operand (target, tmode)
+	  || GET_MODE (target) != tmode)
 	target = gen_reg_rtx (tmode);
     }
 
@@ -31377,9 +31430,9 @@ ix86_expand_vector_set (bool mmx_ok, rtx target, rtx val, int elt)
 	  tmp = gen_reg_rtx (GET_MODE_INNER (mode));
 	  ix86_expand_vector_extract (true, tmp, target, 1 - elt);
 	  if (elt == 0)
-	    tmp = gen_rtx_VEC_CONCAT (mode, tmp, val);
-	  else
 	    tmp = gen_rtx_VEC_CONCAT (mode, val, tmp);
+	  else
+	    tmp = gen_rtx_VEC_CONCAT (mode, tmp, val);
 	  emit_insn (gen_rtx_SET (VOIDmode, target, tmp));
 	  return;
 	}
@@ -31393,9 +31446,9 @@ ix86_expand_vector_set (bool mmx_ok, rtx target, rtx val, int elt)
       tmp = gen_reg_rtx (GET_MODE_INNER (mode));
       ix86_expand_vector_extract (false, tmp, target, 1 - elt);
       if (elt == 0)
-	tmp = gen_rtx_VEC_CONCAT (mode, tmp, val);
-      else
 	tmp = gen_rtx_VEC_CONCAT (mode, val, tmp);
+      else
+	tmp = gen_rtx_VEC_CONCAT (mode, tmp, val);
       emit_insn (gen_rtx_SET (VOIDmode, target, tmp));
       return;
 
@@ -32823,7 +32876,8 @@ ix86_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
         return ix86_cost->cond_not_taken_branch_cost;
 
       case vec_perm:
-        return 1;
+      case vec_promote_demote:
+        return ix86_cost->vec_stmt_cost;
 
       default:
         gcc_unreachable ();
