@@ -31,7 +31,7 @@ import (
 // Errors introduced by the HTTP server.
 var (
 	ErrWriteAfterFlush = errors.New("Conn.Write called after Flush")
-	ErrBodyNotAllowed  = errors.New("http: response status code does not allow body")
+	ErrBodyNotAllowed  = errors.New("http: request method or response status code does not allow body")
 	ErrHijacked        = errors.New("Conn has been hijacked")
 	ErrContentLength   = errors.New("Conn.Write wrote more than the declared Content-Length")
 )
@@ -601,7 +601,7 @@ func (c *conn) serve() {
 				// while they're still writing their
 				// request.  Undefined behavior.
 				msg = "413 Request Entity Too Large"
-			} else if err == io.ErrUnexpectedEOF {
+			} else if err == io.EOF {
 				break // Don't reply
 			} else if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 				break // Don't reply
@@ -785,8 +785,10 @@ var htmlReplacer = strings.NewReplacer(
 	"&", "&amp;",
 	"<", "&lt;",
 	">", "&gt;",
-	`"`, "&quot;",
-	"'", "&apos;",
+	// "&#34;" is shorter than "&quot;".
+	`"`, "&#34;",
+	// "&#39;" is shorter than "&apos;" and apos was not in HTML until HTML5.
+	"'", "&#39;",
 )
 
 func htmlEscape(s string) string {

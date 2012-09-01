@@ -1415,7 +1415,7 @@ Common Joined RejectNegative UInteger Var(flag_lto_compression_level) Init(-1)
 -flto-compression-level=<number>	Use zlib compression level <number> for IL
 
 flto-report
-Common Report Var(flag_lto_report) Init(0) Optimization
+Common Report Var(flag_lto_report) Init(0)
 Report various link-time optimization statistics
 
 fmath-errno
@@ -1654,6 +1654,19 @@ Enable scheduling across basic blocks
 fsched-pressure
 Common Report Var(flag_sched_pressure) Init(0) Optimization
 Enable register pressure sensitive insn scheduling
+
+fsched-pressure-algorithm=
+Common Joined RejectNegative Enum(sched_pressure_algorithm) Var(flag_sched_pressure_algorithm) Init(SCHED_PRESSURE_WEIGHTED)
+-fsched-pressure-algorithm=[weighted|model] Set algorithm used by the scheduler to estimate register pressure
+
+Enum
+Name(sched_pressure_algorithm) Type(enum sched_pressure_algorithm) UnknownError(unknown %<fsched-pressure%> algorithm %qs)
+
+EnumValue
+Enum(sched_pressure_algorithm) String(weighted) Value(SCHED_PRESSURE_WEIGHTED)
+
+EnumValue
+Enum(sched_pressure_algorithm) String(model) Value(SCHED_PRESSURE_MODEL)
 
 fsched-spec
 Common Report Var(flag_schedule_speculative) Init(1) Optimization
@@ -2009,6 +2022,10 @@ Enable hoisting loads from conditional pointers.
 ftree-pre
 Common Report Var(flag_tree_pre) Optimization
 Enable SSA-PRE optimization on trees
+
+ftree-partial-pre
+Common Report Var(flag_tree_partial_pre) Optimization
+In SSA-PRE optimization on trees, enable partial-partial redundancy elimination
 
 ftree-pta
 Common Report Var(flag_tree_pta) Init(1) Optimization

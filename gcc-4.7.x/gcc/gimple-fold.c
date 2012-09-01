@@ -115,7 +115,7 @@ can_refer_decl_in_current_unit_p (tree decl)
 tree
 canonicalize_constructor_val (tree cval)
 {
-  STRIP_NOPS (cval);
+  STRIP_USELESS_TYPE_CONVERSION (cval);
   if (TREE_CODE (cval) == POINTER_PLUS_EXPR
       && TREE_CODE (TREE_OPERAND (cval, 1)) == INTEGER_CST)
     {
@@ -671,13 +671,10 @@ get_maxval_strlen (tree arg, tree *length, bitmap visited, int type)
 
   if (TREE_CODE (arg) != SSA_NAME)
     {
-      if (TREE_CODE (arg) == COND_EXPR)
-        return get_maxval_strlen (COND_EXPR_THEN (arg), length, visited, type)
-               && get_maxval_strlen (COND_EXPR_ELSE (arg), length, visited, type);
       /* We can end up with &(*iftmp_1)[0] here as well, so handle it.  */
-      else if (TREE_CODE (arg) == ADDR_EXPR
-	       && TREE_CODE (TREE_OPERAND (arg, 0)) == ARRAY_REF
-	       && integer_zerop (TREE_OPERAND (TREE_OPERAND (arg, 0), 1)))
+      if (TREE_CODE (arg) == ADDR_EXPR
+	  && TREE_CODE (TREE_OPERAND (arg, 0)) == ARRAY_REF
+	  && integer_zerop (TREE_OPERAND (TREE_OPERAND (arg, 0), 1)))
 	{
 	  tree aop0 = TREE_OPERAND (TREE_OPERAND (arg, 0), 0);
 	  if (TREE_CODE (aop0) == INDIRECT_REF
@@ -736,6 +733,13 @@ get_maxval_strlen (tree arg, tree *length, bitmap visited, int type)
           {
             tree rhs = gimple_assign_rhs1 (def_stmt);
             return get_maxval_strlen (rhs, length, visited, type);
+          }
+	else if (gimple_assign_rhs_code (def_stmt) == COND_EXPR)
+	  {
+	    tree op2 = gimple_assign_rhs2 (def_stmt);
+	    tree op3 = gimple_assign_rhs3 (def_stmt);
+	    return get_maxval_strlen (op2, length, visited, type)
+		   && get_maxval_strlen (op3, length, visited, type);
           }
         return false;
 
@@ -2701,6 +2705,10 @@ get_base_constructor (tree base, HOST_WIDE_INT *bit_offset,
       if (!DECL_INITIAL (base)
 	  && (TREE_STATIC (base) || DECL_EXTERNAL (base)))
         return error_mark_node;
+      /* Do not return an error_mark_node DECL_INITIAL.  LTO uses this
+         as special marker (_not_ zero ...) for its own purposes.  */
+      if (DECL_INITIAL (base) == error_mark_node)
+	return NULL_TREE;
       return DECL_INITIAL (base);
 
     case ARRAY_REF:
@@ -3101,7 +3109,7 @@ gimple_get_virt_method_for_binfo (HOST_WIDE_INT token, tree known_binfo)
   offset += token * size;
   fn = fold_ctor_reference (TREE_TYPE (TREE_TYPE (v)), DECL_INITIAL (v),
 			    offset, size);
-  if (!fn)
+  if (!fn || integer_zerop (fn))
     return NULL_TREE;
   gcc_assert (TREE_CODE (fn) == ADDR_EXPR
 	      || TREE_CODE (fn) == FDESC_EXPR);

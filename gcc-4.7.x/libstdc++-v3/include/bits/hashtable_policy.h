@@ -294,6 +294,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
     enum { _S_n_primes = sizeof(unsigned long) != 8 ? 256 : 256 + 48 };
 
+    static const std::size_t _S_growth_factor = 2;
+
     float                _M_max_load_factor;
     mutable std::size_t  _M_prev_resize;
     mutable std::size_t  _M_next_resize;
@@ -314,28 +316,27 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     static const unsigned char __fast_bkt[12]
       = { 2, 2, 2, 3, 5, 5, 7, 7, 11, 11, 11, 11 };
 
-    if (__n <= 11)
+    const std::size_t __grown_n = __n * _S_growth_factor;
+    if (__grown_n <= 11)
       {
 	_M_prev_resize = 0;
 	_M_next_resize
-	  = __builtin_ceil(__fast_bkt[__n] * (long double)_M_max_load_factor);
-	return __fast_bkt[__n];
+	  = __builtin_ceil(__fast_bkt[__grown_n]
+			   * (long double)_M_max_load_factor);
+	return __fast_bkt[__grown_n];
       }
 
-    const unsigned long* __p
-      = std::lower_bound(__prime_list + 5, __prime_list + _S_n_primes, __n);
+    const unsigned long* __next_bkt
+      = std::lower_bound(__prime_list + 5, __prime_list + _S_n_primes,
+			 __grown_n);
+    const unsigned long* __prev_bkt
+      = std::lower_bound(__prime_list + 1, __next_bkt, __n / _S_growth_factor);
 
-    // Shrink will take place only if the number of elements is small enough
-    // so that the prime number 2 steps before __p is large enough to still
-    // conform to the max load factor:
     _M_prev_resize
-      = __builtin_floor(*(__p - 2) * (long double)_M_max_load_factor);
-
-    // Let's guaranty that a minimal grow step of 11 is used
-    if (*__p - __n < 11)
-      __p = std::lower_bound(__p, __prime_list + _S_n_primes, __n + 11);
-    _M_next_resize = __builtin_ceil(*__p * (long double)_M_max_load_factor);
-    return *__p;
+      = __builtin_floor(*(__prev_bkt - 1) * (long double)_M_max_load_factor);
+    _M_next_resize
+      = __builtin_ceil(*__next_bkt * (long double)_M_max_load_factor);
+    return *__next_bkt;
   }
 
   // Return the smallest prime p such that alpha p >= n, where alpha
@@ -533,7 +534,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 
   // Specialization using EBO.
   template<int _Nm, typename _Tp>
-    struct _Hashtable_ebo_helper<_Nm, _Tp, true> : private _Tp
+    struct _Hashtable_ebo_helper<_Nm, _Tp, true>
+    // See PR53067.
+    : public _Tp
     {
       _Hashtable_ebo_helper() = default;
       _Hashtable_ebo_helper(const _Tp& __tp) : _Tp(__tp)
@@ -595,8 +598,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   template<typename _Key, typename _Value, typename _ExtractKey, 
 	   typename _H1, typename _H2, typename _Hash>
     struct _Hash_code_base<_Key, _Value, _ExtractKey, _H1, _H2, _Hash, false>
-    : private _Hashtable_ebo_helper<0, _ExtractKey>,
-      private _Hashtable_ebo_helper<1, _Hash>
+    // See PR53067.
+    : public  _Hashtable_ebo_helper<0, _ExtractKey>,
+      public  _Hashtable_ebo_helper<1, _Hash>
     {
     private:
       typedef _Hashtable_ebo_helper<0, _ExtractKey> _EboExtractKey;
@@ -669,9 +673,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	   typename _H1, typename _H2>
     struct _Hash_code_base<_Key, _Value, _ExtractKey, _H1, _H2,
 			   _Default_ranged_hash, false>
-    : private _Hashtable_ebo_helper<0, _ExtractKey>,
-      private _Hashtable_ebo_helper<1, _H1>,
-      private _Hashtable_ebo_helper<2, _H2>
+    // See PR53067.
+    : public  _Hashtable_ebo_helper<0, _ExtractKey>,
+      public  _Hashtable_ebo_helper<1, _H1>,
+      public  _Hashtable_ebo_helper<2, _H2>
     {
     private:
       typedef _Hashtable_ebo_helper<0, _ExtractKey> _EboExtractKey;
@@ -748,9 +753,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	   typename _H1, typename _H2>
     struct _Hash_code_base<_Key, _Value, _ExtractKey, _H1, _H2,
 			   _Default_ranged_hash, true>
-    : private _Hashtable_ebo_helper<0, _ExtractKey>,
-      private _Hashtable_ebo_helper<1, _H1>,
-      private _Hashtable_ebo_helper<2, _H2>
+    // See PR53067.
+    : public  _Hashtable_ebo_helper<0, _ExtractKey>,
+      public  _Hashtable_ebo_helper<1, _H1>,
+      public  _Hashtable_ebo_helper<2, _H2>
     {
     private:
       typedef _Hashtable_ebo_helper<0, _ExtractKey> _EboExtractKey;
@@ -853,9 +859,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	   typename _H1, typename _H2, typename _Hash,
 	   bool __cache_hash_code>
   struct _Hashtable_base
+  // See PR53067.
   : public  _Hash_code_base<_Key, _Value, _ExtractKey, _H1, _H2, _Hash,
 			    __cache_hash_code>,
-    private _Hashtable_ebo_helper<0, _Equal>
+    public _Hashtable_ebo_helper<0, _Equal>
   {
   private:
     typedef _Hashtable_ebo_helper<0, _Equal> _EboEqual;
@@ -906,7 +913,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	   typename _H1, typename _H2, typename _Hash>
     struct _Local_iterator_base<_Key, _Value, _ExtractKey,
 				_H1, _H2, _Hash, true>
-      : private _H2
+    // See PR53067.
+    : public _H2
     {
       _Local_iterator_base() = default;
       _Local_iterator_base(_Hash_node<_Value, true>* __p,
@@ -937,8 +945,9 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	   typename _H1, typename _H2, typename _Hash>
     struct _Local_iterator_base<_Key, _Value, _ExtractKey,
 				_H1, _H2, _Hash, false>
-      : private _Hash_code_base<_Key, _Value, _ExtractKey,
-				_H1, _H2, _Hash, false>
+    // See PR53067.
+    : public _Hash_code_base<_Key, _Value, _ExtractKey,
+			     _H1, _H2, _Hash, false>
     {
       _Local_iterator_base() = default;
       _Local_iterator_base(_Hash_node<_Value, false>* __p,

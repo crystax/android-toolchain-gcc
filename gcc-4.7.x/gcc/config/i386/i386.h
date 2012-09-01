@@ -425,7 +425,7 @@ extern unsigned char ix86_tune_features[X86_TUNE_LAST];
 
 /* Feature tests against the various architecture variations.  */
 enum ix86_arch_indices {
-  X86_ARCH_CMOVE,		/* || TARGET_SSE */
+  X86_ARCH_CMOV,
   X86_ARCH_CMPXCHG,
   X86_ARCH_CMPXCHG8B,
   X86_ARCH_XADD,
@@ -436,11 +436,16 @@ enum ix86_arch_indices {
 
 extern unsigned char ix86_arch_features[X86_ARCH_LAST];
 
-#define TARGET_CMOVE		ix86_arch_features[X86_ARCH_CMOVE]
+#define TARGET_CMOV		ix86_arch_features[X86_ARCH_CMOV]
 #define TARGET_CMPXCHG		ix86_arch_features[X86_ARCH_CMPXCHG]
 #define TARGET_CMPXCHG8B	ix86_arch_features[X86_ARCH_CMPXCHG8B]
 #define TARGET_XADD		ix86_arch_features[X86_ARCH_XADD]
 #define TARGET_BSWAP		ix86_arch_features[X86_ARCH_BSWAP]
+
+/* For sane SSE instruction set generation we need fcomi instruction.
+   It is safe to enable all CMOVE instructions.  Also, RDRAND intrinsic
+   expands to a sequence that includes conditional move. */
+#define TARGET_CMOVE		(TARGET_CMOV || TARGET_SSE || TARGET_RDRND)
 
 #define TARGET_FISTTP		(TARGET_SSE3 && TARGET_80387)
 
@@ -718,6 +723,18 @@ enum target_cpu_default
 
 /* Boundary (in *bits*) on which the incoming stack is aligned.  */
 #define INCOMING_STACK_BOUNDARY ix86_incoming_stack_boundary
+
+/* According to Windows x64 software convention, the maximum stack allocatable
+   in the prologue is 4G - 8 bytes.  Furthermore, there is a limited set of
+   instructions allowed to adjust the stack pointer in the epilog, forcing the
+   use of frame pointer for frames larger than 2 GB.  This theorical limit
+   is reduced by 256, an over-estimated upper bound for the stack use by the
+   prologue.
+   We define only one threshold for both the prolog and the epilog.  When the
+   frame size is larger than this threshold, we allocate the area to save SSE
+   regs, then save them, and then allocate the remaining.  There is no SEH
+   unwind info for this later allocation.  */
+#define SEH_MAX_FRAME_SIZE ((2U << 30) - 256)
 
 /* Target OS keeps a vector-aligned (128-bit, 16-byte) stack.  This is
    mandatory for the 64-bit ABI, and may or may not be true for other
@@ -1628,6 +1645,17 @@ typedef struct ix86_args {
 #define MAX_REGS_PER_ADDRESS 2
 
 #define CONSTANT_ADDRESS_P(X)  constant_address_p (X)
+
+/* Try a machine-dependent way of reloading an illegitimate address
+   operand.  If we find one, push the reload and jump to WIN.  This
+   macro is used in only one place: `find_reloads_address' in reload.c.  */
+
+#define LEGITIMIZE_RELOAD_ADDRESS(X, MODE, OPNUM, TYPE, INDL, WIN)	\
+do {									\
+  if (ix86_legitimize_reload_address ((X), (MODE), (OPNUM),		\
+				      (int)(TYPE), (INDL)))		\
+    goto WIN;								\
+} while (0)
 
 /* If defined, a C expression to determine the base term of address X.
    This macro is used in only one place: `find_base_term' in alias.c.

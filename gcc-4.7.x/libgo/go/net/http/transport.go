@@ -196,7 +196,7 @@ func (t *Transport) CloseIdleConnections() {
 			pconn.close()
 		}
 	}
-	t.idleConn = nil
+	t.idleConn = make(map[string][]*persistConn)
 }
 
 //
@@ -450,10 +450,14 @@ type connectMethod struct {
 
 func (ck *connectMethod) String() string {
 	proxyStr := ""
+	targetAddr := ck.targetAddr
 	if ck.proxyURL != nil {
 		proxyStr = ck.proxyURL.String()
+		if ck.targetScheme == "http" {
+			targetAddr = ""
+		}
 	}
-	return strings.Join([]string{proxyStr, ck.targetScheme, ck.targetAddr}, "|")
+	return strings.Join([]string{proxyStr, ck.targetScheme, targetAddr}, "|")
 }
 
 // addr returns the first hop "host:port" to which we need to TCP connect.

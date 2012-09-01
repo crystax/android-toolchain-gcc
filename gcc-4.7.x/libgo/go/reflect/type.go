@@ -66,9 +66,10 @@ type Type interface {
 	// It returns an empty string for unnamed types.
 	Name() string
 
-	// PkgPath returns the type's package path.
-	// The package path is a full package import path like "encoding/base64".
-	// PkgPath returns an empty string for unnamed or predeclared types.
+	// PkgPath returns a named type's package path, that is, the import path
+	// that uniquely identifies the package, such as "encoding/base64".
+	// If the type was predeclared (string, error) or unnamed (*T, struct{}, []int),
+	// the package path will be the empty string.
 	PkgPath() string
 
 	// Size returns the number of bytes needed to store
@@ -81,6 +82,9 @@ type Type interface {
 	// guaranteed to be unique among types.  To test for equality,
 	// compare the Types directly.
 	String() string
+
+	// Used internally by gccgo--the string retaining quoting.
+	rawString() string
 
 	// Kind returns the specific kind of this type.
 	Kind() Kind
@@ -234,6 +238,7 @@ type commonType struct {
 	kind       uint8   // enumeration for C
 	align      int8    // alignment of variable with this type
 	fieldAlign uint8   // alignment of struct field with this type
+	_          uint8   // unused/padding
 	size       uintptr // size in bytes
 	hash       uint32  // hash of type; avoids computation in hash tables
 
@@ -350,11 +355,18 @@ type structType struct {
 
 // Method represents a single method.
 type Method struct {
-	PkgPath string // empty for uppercase Name
+	// Name is the method name.
+	// PkgPath is the package path that qualifies a lower case (unexported)
+	// method name.  It is empty for upper case (exported) method names.
+	// The combination of PkgPath and Name uniquely identifies a method
+	// in a method set. 
+	// See http://golang.org/ref/spec#Uniqueness_of_identifiers
 	Name    string
-	Type    Type
-	Func    Value
-	Index   int
+	PkgPath string
+
+	Type  Type  // method type
+	Func  Value // func with receiver as first argument
+	Index int   // index for Type.Method
 }
 
 // High bit says whether type has
@@ -423,7 +435,24 @@ func (t *commonType) toType() Type {
 	return canonicalize(t)
 }
 
-func (t *commonType) String() string { return *t.string }
+func (t *commonType) rawString() string { return *t.string }
+
+func (t *commonType) String() string {
+	// For gccgo, strip out quoted strings.
+	s := *t.string
+	var q bool
+	r := make([]byte, len(s))
+	j := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\t' {
+			q = !q
+		} else if !q {
+			r[j] = s[i]
+			j++
+		}
+	}
+	return string(r[:j])
+}
 
 func (t *commonType) Size() uintptr { return t.size }
 
@@ -694,14 +723,20 @@ func (t *interfaceType) MethodByName(name string) (m Method, ok bool) {
 	return
 }
 
+// A StructField describes a single field in a struct.
 type StructField struct {
-	PkgPath   string // empty for uppercase Name
-	Name      string
-	Type      Type
-	Tag       StructTag
-	Offset    uintptr
-	Index     []int
-	Anonymous bool
+	// Name is the field name.
+	// PkgPath is the package path that qualifies a lower case (unexported)
+	// field name.  It is empty for upper case (exported) field names.
+	// See http://golang.org/ref/spec#Uniqueness_of_identifiers
+	Name    string
+	PkgPath string
+
+	Type      Type      // field type
+	Tag       StructTag // field tag string
+	Offset    uintptr   // offset within struct, in bytes
+	Index     []int     // index sequence for Type.FieldByIndex
+	Anonymous bool      // is an anonymous field
 }
 
 // A StructTag is the tag string in a struct field.
@@ -927,7 +962,7 @@ func canonicalize(t Type) Type {
 	u := t.uncommon()
 	var s string
 	if u == nil || u.PkgPath() == "" {
-		s = t.String()
+		s = t.rawString()
 	} else {
 		s = u.PkgPath() + "." + u.Name()
 	}
@@ -955,6 +990,7 @@ func toType(p *runtimeType) Type {
 }
 
 // TypeOf returns the reflection Type of the value in the interface{}.
+// TypeOf(nil) returns nil.
 func TypeOf(i interface{}) Type {
 	eface := *(*emptyInterface)(unsafe.Pointer(&i))
 	return toType(eface.typ)
