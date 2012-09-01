@@ -3695,11 +3695,22 @@ rs6000_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
       case vec_to_scalar:
       case scalar_to_vec:
       case cond_branch_not_taken:
-      case vec_perm:
         return 1;
 
       case cond_branch_taken:
         return 3;
+
+      case vec_perm:
+	if (TARGET_VSX)
+	  return 4;
+	else
+	  return 1;
+
+      case vec_promote_demote:
+	if (TARGET_VSX)
+	  return 5;
+	else
+	  return 1;
 
       case unaligned_load:
         if (TARGET_VSX && TARGET_ALLOW_MOVMISALIGN)
@@ -15815,7 +15826,6 @@ void
 print_operand (FILE *file, rtx x, int code)
 {
   int i;
-  HOST_WIDE_INT val;
   unsigned HOST_WIDE_INT uval;
 
   switch (code)
@@ -16256,34 +16266,17 @@ print_operand (FILE *file, rtx x, int code)
 
     case 'W':
       /* MB value for a PowerPC64 rldic operand.  */
-      val = (GET_CODE (x) == CONST_INT
-	     ? INTVAL (x) : CONST_DOUBLE_HIGH (x));
-
-      if (val < 0)
-	i = -1;
-      else
-	for (i = 0; i < HOST_BITS_PER_WIDE_INT; i++)
-	  if ((val <<= 1) < 0)
-	    break;
+      i = clz_hwi (GET_CODE (x) == CONST_INT
+		   ? INTVAL (x) : CONST_DOUBLE_HIGH (x));
 
 #if HOST_BITS_PER_WIDE_INT == 32
-      if (GET_CODE (x) == CONST_INT && i >= 0)
+      if (GET_CODE (x) == CONST_INT && i > 0)
 	i += 32;  /* zero-extend high-part was all 0's */
       else if (GET_CODE (x) == CONST_DOUBLE && i == 32)
-	{
-	  val = CONST_DOUBLE_LOW (x);
-
-	  gcc_assert (val);
-	  if (val < 0)
-	    --i;
-	  else
-	    for ( ; i < 64; i++)
-	      if ((val <<= 1) < 0)
-		break;
-	}
+	i = clz_hwi (CONST_DOUBLE_LOW (x)) + 32;
 #endif
 
-      fprintf (file, "%d", i + 1);
+      fprintf (file, "%d", i);
       return;
 
     case 'x':
@@ -17233,6 +17226,10 @@ rs6000_emit_vector_compare_inner (enum rtx_code code, rtx op0, rtx op1)
     case EQ:
     case GT:
     case GTU:
+    case ORDERED:
+    case UNORDERED:
+    case UNEQ:
+    case LTGT:
       mask = gen_reg_rtx (mode);
       emit_insn (gen_rtx_SET (VOIDmode,
 			      mask,

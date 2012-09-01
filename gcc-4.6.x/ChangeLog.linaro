@@ -1,3 +1,316 @@
+2012-08-13  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	GCC Linaro 4.6-2012.08 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-08-10  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	Backport from mainline:
+
+	gcc/
+	2012-07-30  Ulrich Weigand  <ulrich.weigand@linaro.org>
+		    Richard Earnshaw  <rearnsha@arm.com>
+
+	* target.def (vector_alignment): New target hook.
+	* doc/tm.texi.in (TARGET_VECTOR_ALIGNMENT): Document new hook.
+	* doc/tm.texi: Regenerate.
+	* targhooks.c (default_vector_alignment): New function.
+	* targhooks.h (default_vector_alignment): Add prototype.
+	* stor-layout.c (layout_type): Use targetm.vector_alignment.
+	* config/arm/arm.c (arm_vector_alignment): New function.
+	(TARGET_VECTOR_ALIGNMENT): Define.
+
+	* tree-vect-data-refs.c (vect_update_misalignment_for_peel): Use
+	vector type alignment instead of size.
+	* tree-vect-loop-manip.c (vect_do_peeling_for_loop_bound): Use
+	element type size directly instead of computing it from alignment.
+	Fix variable naming and comment.
+
+	gcc/testsuite/
+	2012-07-30  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	* lib/target-supports.exp
+	(check_effective_target_vect_natural_alignment): New function.
+	* gcc.dg/align-2.c: Only run on targets with natural alignment
+	of vector types.
+	* gcc.dg/vect/slp-25.c: Adjust tests for targets without natural
+	alignment of vector types.
+
+	2011-12-21  Michael Zolotukhin  <michael.v.zolotukhin@intel.com>
+
+	* gcc.dg/vect/vect-peel-1.c: Adjust test diag-scans to fix fail on AVX.
+	* gcc.dg/vect/vect-peel-2.c: Ditto.
+
+	2011-06-21  Ira Rosen  <ira.rosen@linaro.org>
+
+	PR testsuite/49443
+	* gcc.dg/vect/vect-peel-3.c: Expect to fail on vect_no_align
+	targets.
+	* gcc.dg/vect/vect-peel-4.c: Likewise.
+
+	2011-06-14  Ira Rosen  <ira.rosen@linaro.org>
+
+	* gcc.dg/vect/vect-peel-3.c: Adjust misalignment values
+	for double-word vectors.
+	* gcc.dg/vect/vect-peel-4.c: Likewise.
+
+2012-08-01  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 189991).
+
+2012-07-02  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
+2012-07-02  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	GCC Linaro 4.6-2012.07 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-07-01  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 189058).
+
+2012-06-29  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	LP 1010826
+
+	Backport from mainline:
+
+	gcc/
+	PR tree-optimization/53729
+	PR tree-optimization/53636
+	* tree-vect-slp.c (vect_slp_analyze_bb_1): Delay call to
+	vect_verify_datarefs_alignment until after statements have
+	been marked as relevant/irrelevant.
+	* tree-vect-data-refs.c (vect_verify_datarefs_alignment):
+	Skip irrelevant statements.
+	(vect_enhance_data_refs_alignment): Use STMT_VINFO_RELEVANT_P
+	instead of STMT_VINFO_RELEVANT.
+	(vect_get_data_access_cost): Do not check for supportable
+	alignment before calling vect_get_load_cost/vect_get_store_cost.
+	* tree-vect-stmts.c (vect_get_store_cost): Do not abort when
+	handling unsupported alignment.
+	(vect_get_load_cost): Likewise.
+
+	gcc/
+	PR tree-optimization/53636
+	* tree-vect-data-refs.c (vect_compute_data_ref_alignment): Verify
+	stride when doing basic-block vectorization.
+
+	gcc/testsuite/
+	PR tree-optimization/53636
+	* gcc.target/arm/pr53636.c: New test.
+
+2012-06-28  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	gcc/
+	* config/arm/arm.c (neon_dereference_pointer): Fixup typos.
+
+	gcc/testsuite/
+	* gcc.target/arm/lp101329.c: Remove unneeded comment.
+
+2012-06-21  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	LP 1013209
+	gcc/
+	* config/arm/arm.c (neon_dereference_pointer): Use fold_convert
+	to convert expression to the right type. This is a Linaro 4.6 only
+	patch as this was originally backported from FSF 4.7 and hence applies
+	only here.
+
+	gcc/testsuite/
+	* gcc.target/arm/lp101329.c: New test.
+
+2012-06-14  Michael Hope  <michael.hope@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
+2012-06-12  Michael Hope  <michael.hope@linaro.org>
+
+	GCC Linaro 4.6-2012.06 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-06-11  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 188320).
+
+2012-05-22  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	Backport from mainline:
+	gcc/
+	2012-03-15  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	* config.gcc (target_type_format_char): New. Document it. Set it for
+        arm*-*-* .
+
+2012-05-23  Ramana Radhakrishnan  <ramana.radhakrishnan@linaro.org>
+
+	LP:990530
+	gcc/
+        2012-03-12  Richard Guenther  <rguenther@suse.de>
+	* config/arm/arm.c (neon_dereference_pointer): Do not call
+	covert during RTL expansion.
+
+2012-05-21  Michael Hope  <michael.hope@linaro.org>
+
+	Backport from mainline r186859:
+
+	gcc/
+	2012-04-26  Michael Hope  <michael.hope@linaro.org>
+		    Richard Earnshaw  <rearnsha@arm.com>
+
+	* config/arm/linux-eabi.h (GLIBC_DYNAMIC_LINKER_SOFT_FLOAT): Define.
+	(GLIBC_DYNAMIC_LINKER_HARD_FLOAT): Define.
+	(GLIBC_DYNAMIC_LINKER_DEFAULT): Define.
+	(GLIBC_DYNAMIC_LINKER):	Redefine to use the hard float path.
+
+	Backport from mainline r187012:
+
+	gcc/
+	2012-05-01  Richard Earnshaw  <rearnsha@arm.com>
+
+	* arm/linux-eabi.h (GLIBC_DYNAMIC_LINKER_DEFAULT): Avoid ifdef
+	comparing enumeration values.  Update comments.
+
+2012-05-15  Andrew Stubbs  <ams@codesourcery.com>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
+2012-05-15  Andrew Stubbs  <ams@codesourcery.com>
+
+	GCC Linaro 4.6-2012.05 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-05-08  Andrew Stubbs  <ams@codesourcery.com>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 187273).
+
+2012-05-08  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	LP 959242
+
+	Backport from mainline:
+
+	2012-05-04  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	gcc/
+	PR tree-optimization/52633
+	* tree-vect-patterns.c (vect_vect_recog_func_ptrs): Swap order of
+	vect_recog_widen_shift_pattern and vect_recog_over_widening_pattern.
+	(vect_recog_over_widening_pattern): Remove handling of code that was
+	already detected as over-widening pattern.  Remove special handling
+	of "unsigned" cases.  Instead, support general case of conversion
+	of the shift result to another type.
+
+	gcc/testsuite/
+	PR tree-optimization/52633
+	* gcc.target/arm/pr52633.c: New test.
+
+	gcc/
+	* tree-vect-patterns.c (vect_single_imm_use): New function.
+	(vect_recog_widen_mult_pattern): Use it instead of open-coding loop.
+	(vect_recog_over_widening_pattern): Likewise.
+	(vect_recog_widen_shift_pattern): Likewise.
+
+	gcc/
+	* tree-vect-patterns.c (vect_same_loop_or_bb_p): New function.
+	(vect_handle_widen_op_by_const): Use it instead of open-coding test.
+	(vect_recog_widen_mult_pattern): Likewise.
+	(vect_operation_fits_smaller_type): Likewise.
+	(vect_recog_over_widening_pattern): Likewise.
+	(vect_recog_widen_shift_pattern): Add to vect_same_loop_or_bb_p test.
+
+2012-04-16  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	LP 972648
+
+	Backport from mainline:
+
+	2011-08-23  Richard Guenther  <rguenther@suse.de>
+
+	gcc/
+	* Makefile.in (tree-data-ref.o): Add tree-affine.h dependency.
+	* tree-affine.h (aff_comb_cannot_overlap_p): Declare.
+	* tree-affine.c (aff_comb_cannot_overlap_p): New function, moved
+	from ...
+	* tree-ssa-loop-im.c (cannot_overlap_p): ... here.
+	(mem_refs_may_alias_p): Adjust.
+	* tree-data-ref.h (dr_may_alias_p): Adjust.
+	* tree-data-ref.c: Include tree-affine.h.
+	(dr_analyze_indices): Do nothing for the non-loop case.
+	(dr_may_alias_p): Distinguish loop and non-loop case.  Disambiguate
+	more cases in the non-loop case.
+	* graphite-sese-to-poly.c (write_alias_graph_to_ascii_dimacs): Adjust
+	calls to dr_may_alias_p.
+	(write_alias_graph_to_ascii_ecc): Likewise.
+	(write_alias_graph_to_ascii_dot): Likewise.
+	(build_alias_set_optimal_p): Likewise.
+
+2012-04-13  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	LP 968766
+
+	Backport from mainline:
+
+	gcc/
+	PR tree-optimization/52870
+	* tree-vect-patterns.c (vect_recog_widen_mult_pattern): Verify that
+	presumed pattern statement is within the same loop or basic block.
+
+	gcc/testsuite/
+	PR tree-optimization/52870
+	* gcc.dg/vect/pr52870.c: New test.
+
+2012-04-10  Andrew Stubbs  <ams@codesourcery.com>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
+2012-04-10  Andrew Stubbs  <ams@codesourcery.com>
+
+	GCC Linaro 4.6-2012.04 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-04-02  Andrew Stubbs  <ams@codesourcery.com>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 186060).
+
+2012-03-26  Ulrich Weigand  <ulrich.weigand@linaro.org>
+
+	LP 960283
+	LP 960274
+	LP 960817
+
+	Backport from mainline:
+
+	gcc/
+	PR tree-optimization/52686
+	* tree-vect-data-refs.c (vect_get_smallest_scalar_type): Handle
+	WIDEN_LSHIFT_EXPR.
+
+	gcc/testsuite/
+	PR tree-optimization/52686
+	* gcc.target/arm/pr52686.c: New test.
+
+2012-03-12  Andrew Stubbs  <ams@codesourcery.com>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-03-12  Andrew Stubbs  <ams@codesourcery.com>
 
 	GCC Linaro 4.6-2012.03 released.

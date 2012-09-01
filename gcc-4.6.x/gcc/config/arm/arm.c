@@ -258,6 +258,7 @@ static bool arm_array_mode_supported_p (enum machine_mode,
 					unsigned HOST_WIDE_INT);
 static enum machine_mode arm_preferred_simd_mode (enum machine_mode);
 static bool arm_class_likely_spilled_p (reg_class_t);
+static HOST_WIDE_INT arm_vector_alignment (const_tree type);
 static bool arm_vector_alignment_reachable (const_tree type, bool is_packed);
 static bool arm_builtin_support_vector_misalignment (enum machine_mode mode,
 						     const_tree type,
@@ -611,6 +612,9 @@ static const struct default_options arm_option_optimization_table[] =
 
 #undef TARGET_CLASS_LIKELY_SPILLED_P
 #define TARGET_CLASS_LIKELY_SPILLED_P arm_class_likely_spilled_p
+
+#undef TARGET_VECTOR_ALIGNMENT
+#define TARGET_VECTOR_ALIGNMENT arm_vector_alignment
 
 #undef TARGET_VECTORIZE_VECTOR_ALIGNMENT_REACHABLE
 #define TARGET_VECTORIZE_VECTOR_ALIGNMENT_REACHABLE \
@@ -2127,7 +2131,8 @@ arm_option_override (void)
 			   global_options_set.x_param_values);
 
   /* ARM EABI defaults to strict volatile bitfields.  */
-  if (TARGET_AAPCS_BASED && flag_strict_volatile_bitfields < 0)
+  if (TARGET_AAPCS_BASED && flag_strict_volatile_bitfields < 0
+      && abi_version_at_least(2))
     flag_strict_volatile_bitfields = 1;
 
   /* Enable sw prefetching at -O3 for CPUS that have prefetch, and we have deemed
@@ -20449,9 +20454,9 @@ neon_dereference_pointer (tree exp, enum machine_mode mem_mode,
   /* Create a type that describes the full access.  */
   upper_bound = build_int_cst (size_type_node, nelems - 1);
   array_type = build_array_type (elem_type, build_index_type (upper_bound));
-
   /* Dereference EXP using that type.  */
-  exp = convert (build_pointer_type (array_type), exp);
+  exp = fold_convert (build_pointer_type (array_type), exp);
+
   return fold_build2 (MEM_REF, array_type, exp,
 		      build_int_cst (TREE_TYPE (exp), 0));
 }
@@ -24808,6 +24813,18 @@ arm_expand_sync (enum machine_mode mode,
       emit_insn (arm_call_generator (generator, target, memory, required_value,
 				     new_value));
     }
+}
+
+/* The AAPCS sets the maximum alignment of a vector to 64 bits.  */
+static HOST_WIDE_INT
+arm_vector_alignment (const_tree type)
+{
+  HOST_WIDE_INT align = tree_low_cst (TYPE_SIZE (type), 0);
+
+  if (TARGET_AAPCS_BASED)
+    align = MIN (align, 64);
+
+  return align;
 }
 
 static unsigned int

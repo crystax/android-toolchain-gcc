@@ -833,6 +833,46 @@ vect_model_simple_cost (stmt_vec_info stmt_info, int ncopies,
 }
 
 
+/* Model cost for type demotion and promotion operations.  PWR is normally
+   zero for single-step promotions and demotions.  It will be one if 
+   two-step promotion/demotion is required, and so on.  Each additional
+   step doubles the number of instructions required.  */
+
+static void
+vect_model_promotion_demotion_cost (stmt_vec_info stmt_info,
+				    enum vect_def_type *dt, int pwr)
+{
+  int i, tmp;
+  int inside_cost = 0, outside_cost = 0, single_stmt_cost;
+
+  /* The SLP costs were already calculated during SLP tree build.  */
+  if (PURE_SLP_STMT (stmt_info))
+    return;
+
+  single_stmt_cost = vect_get_stmt_cost (vec_promote_demote);
+  for (i = 0; i < pwr + 1; i++)
+    {
+      tmp = (STMT_VINFO_TYPE (stmt_info) == type_promotion_vec_info_type) ?
+	(i + 1) : i;
+      inside_cost += vect_pow2 (tmp) * single_stmt_cost;
+    }
+
+  /* FORNOW: Assuming maximum 2 args per stmts.  */
+  for (i = 0; i < 2; i++)
+    {
+      if (dt[i] == vect_constant_def || dt[i] == vect_external_def)
+        outside_cost += vect_get_stmt_cost (vector_stmt);
+    }
+
+  if (vect_print_dump_info (REPORT_COST))
+    fprintf (vect_dump, "vect_model_promotion_demotion_cost: inside_cost = %d, "
+             "outside_cost = %d .", inside_cost, outside_cost);
+
+  /* Set the costs in STMT_INFO.  */
+  stmt_vinfo_set_inside_of_loop_cost (stmt_info, NULL, inside_cost);
+  stmt_vinfo_set_outside_of_loop_cost (stmt_info, NULL, outside_cost);
+}
+
 /* Function vect_cost_strided_group_size
 
    For strided load or store, return the group_size only if it is the first
@@ -904,7 +944,7 @@ vect_model_store_cost (stmt_vec_info stmt_info, int ncopies,
     {
       /* Uses a high and low interleave operation for each needed permute.  */
       inside_cost = ncopies * exact_log2(group_size) * group_size
-        * vect_get_stmt_cost (vector_stmt);
+        * vect_get_stmt_cost (vec_perm);
 
       if (vect_print_dump_info (REPORT_COST))
         fprintf (vect_dump, "vect_model_store_cost: strided group_size = %d .",
@@ -962,6 +1002,16 @@ vect_get_store_cost (struct data_reference *dr, int ncopies,
         break;
       }
 
+    case dr_unaligned_unsupported:
+      {
+        *inside_cost = VECT_MAX_COST;
+
+        if (vect_print_dump_info (REPORT_COST))
+          fprintf (vect_dump, "vect_model_store_cost: unsupported access.");
+
+        break;
+      }
+
     default:
       gcc_unreachable ();
     }
@@ -1010,7 +1060,7 @@ vect_model_load_cost (stmt_vec_info stmt_info, int ncopies, bool load_lanes_p,
     {
       /* Uses an even and odd extract operations for each needed permute.  */
       inside_cost = ncopies * exact_log2(group_size) * group_size
-	* vect_get_stmt_cost (vector_stmt);
+	* vect_get_stmt_cost (vec_perm);
 
       if (vect_print_dump_info (REPORT_COST))
         fprintf (vect_dump, "vect_model_load_cost: strided group_size = %d .",
@@ -1070,13 +1120,16 @@ vect_get_load_cost (struct data_reference *dr, int ncopies,
     case dr_explicit_realign:
       {
         *inside_cost += ncopies * (2 * vect_get_stmt_cost (vector_load)
-           + vect_get_stmt_cost (vector_stmt));
+				   + vect_get_stmt_cost (vec_perm));
 
         /* FIXME: If the misalignment remains fixed across the iterations of
            the containing loop, the following cost should be added to the
            outside costs.  */
         if (targetm.vectorize.builtin_mask_for_load)
           *inside_cost += vect_get_stmt_cost (vector_stmt);
+
+        if (vect_print_dump_info (REPORT_COST))
+          fprintf (vect_dump, "vect_model_load_cost: explicit realign");
 
         break;
       }
@@ -1101,7 +1154,22 @@ vect_get_load_cost (struct data_reference *dr, int ncopies,
           }
 
         *inside_cost += ncopies * (vect_get_stmt_cost (vector_load)
-          + vect_get_stmt_cost (vector_stmt));
+				   + vect_get_stmt_cost (vec_perm));
+
+        if (vect_print_dump_info (REPORT_COST))
+          fprintf (vect_dump,
+		   "vect_model_load_cost: explicit realign optimized");
+
+        break;
+      }
+
+    case dr_unaligned_unsupported:
+      {
+        *inside_cost = VECT_MAX_COST;
+
+        if (vect_print_dump_info (REPORT_COST))
+          fprintf (vect_dump, "vect_model_load_cost: unsupported access.");
+
         break;
       }
 
@@ -3199,7 +3267,7 @@ vectorizable_type_demotion (gimple stmt, gimple_stmt_iterator *gsi,
       STMT_VINFO_TYPE (stmt_info) = type_demotion_vec_info_type;
       if (vect_print_dump_info (REPORT_DETAILS))
         fprintf (vect_dump, "=== vectorizable_demotion ===");
-      vect_model_simple_cost (stmt_info, ncopies, dt, NULL);
+      vect_model_promotion_demotion_cost (stmt_info, dt, multi_step_cvt);
       return true;
     }
 
@@ -3513,7 +3581,7 @@ vectorizable_type_promotion (gimple stmt, gimple_stmt_iterator *gsi,
       STMT_VINFO_TYPE (stmt_info) = type_promotion_vec_info_type;
       if (vect_print_dump_info (REPORT_DETAILS))
         fprintf (vect_dump, "=== vectorizable_promotion ===");
-      vect_model_simple_cost (stmt_info, 2*ncopies, dt, NULL);
+      vect_model_promotion_demotion_cost (stmt_info, dt, multi_step_cvt);
       return true;
     }
 
