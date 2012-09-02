@@ -18842,6 +18842,7 @@ else
 /* end confdefs.h.  */
 #define __STDC_LIMIT_MACROS
 		  #define __STDC_CONSTANT_MACROS
+		  #define __STDC_VERSION__ 199901L
 		  #include <stdint.h>
 int
 main ()

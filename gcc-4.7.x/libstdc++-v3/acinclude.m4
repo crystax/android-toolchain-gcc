@@ -1392,6 +1392,7 @@ AC_DEFUN([GLIBCXX_CHECK_C99_TR1], [
   AC_CACHE_VAL(glibcxx_cv_c99_stdint_tr1, [
   AC_TRY_COMPILE([#define __STDC_LIMIT_MACROS
 		  #define __STDC_CONSTANT_MACROS
+		  #define __STDC_VERSION__ 199901L
 		  #include <stdint.h>],
 		 [typedef int8_t          my_int8_t;
 		  my_int8_t               i8 = INT8_MIN;
