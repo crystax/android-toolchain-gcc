@@ -39,7 +39,7 @@
   "%{" NOANDROID "|tno-android-ld:" LINUX_SPEC ";:" ANDROID_SPEC "}"
 
 #define ANDROID_LINK_SPEC \
-  "%{shared: -Bsymbolic}"
+  "%{shared: -Bsymbolic} -z noexecstack -z relro -z now"
 
 #define ANDROID_CC1_SPEC(ANDROID_PIC_DEFAULT)   \
   "%{!mglibc:%{!muclibc:%{!mbionic: -mbionic}}} "			\
@@ -49,11 +49,13 @@
   "%{!fexceptions:%{!fno-exceptions: -fexceptions}} "		\
   "%{!frtti:%{!fno-rtti: -frtti}}"
 
+#define ANDROID_ASM_SPEC \
+  "--noexecstack"
+
 #define CRYSTAX_LIB_SPEC \
   "%{!static: -lcrystax -Bdynamic -lstdc++ -llog}"
 
 #define ANDROID_LIB_SPEC \
-  CRYSTAX_LIB_SPEC " " \
   "%{!static: -ldl}"
 
 #define ANDROID_STARTFILE_SPEC						\

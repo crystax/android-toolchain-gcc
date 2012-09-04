@@ -49,6 +49,9 @@
   "%{!fexceptions:%{!fno-exceptions: -fexceptions}} "		\
   "%{!frtti:%{!fno-rtti: -frtti}}"
 
+#define ANDROID_ASM_SPEC \
+    "--noexecstack"
+
 #define CRYSTAX_LIB_SPEC \
   "%{!static: -lcrystax -Bdynamic -lstdc++ -llog}"
 
