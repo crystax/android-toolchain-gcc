@@ -97,18 +97,11 @@ along with GCC; see the file COPYING3.  If not see
 #undef  LIB_SPEC
 #define LIB_SPEC                                           \
   LINUX_OR_ANDROID_LD (LINUX_TARGET_LIB_SPEC,                  \
-                      CRYSTAX_LIB_SPEC " "                      \
                       LINUX_TARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
 
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC \
   LINUX_OR_ANDROID_LD (LINUX_TARGET_STARTFILE_SPEC, ANDROID_STARTFILE_SPEC)
-
-#undef  LIB_SPEC
-#define LIB_SPEC                                           \
-  LINUX_OR_ANDROID_LD (LINUX_TARGET_LIB_SPEC,                  \
-                      CRYSTAX_LIB_SPEC " "                     \
-                      LINUX_TARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
 
 /* Provide a LINK_SPEC appropriate for Linux.  Here we provide support
    for the special GCC options -static and -shared, which allow us to
