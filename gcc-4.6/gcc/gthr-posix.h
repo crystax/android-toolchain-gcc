@@ -38,6 +38,19 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define _REENTRANT 1
 #endif
 
+/* The following should normally be in a different header file,
+ * but I couldn't find the right location. The point of the macro
+ * definition below is to prevent libsupc++ and libstdc++ to reference
+ * weak symbols in their static C++ constructors. Such code crashes
+ * when a shared object linked statically to these libraries is
+ * loaded on Android 2.1 (Eclair) and older platform releases, due
+ * to a dynamic linker bug.
+ */
+#ifdef __ANDROID__
+#undef GTHREAD_USE_WEAK
+#define GTHREAD_USE_WEAK 0
+#endif
+
 #include <pthread.h>
 #include <unistd.h>
 
@@ -64,12 +77,6 @@ typedef struct timespec __gthread_time_t;
 #endif
 #define __GTHREAD_COND_INIT PTHREAD_COND_INITIALIZER
 #define __GTHREAD_TIME_INIT {0,0}
-
-#if defined(ANDROID) || defined(__ANDROID__)
-# if defined(GTHREAD_USE_WEAK)
-#  undef GTHREAD_USE_WEAK
-# endif
-#endif
 
 #if SUPPORTS_WEAK && GTHREAD_USE_WEAK
 # ifndef __gthrw_pragma
