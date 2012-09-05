@@ -1558,12 +1558,12 @@ fi
 if test "x$with_ppl" != xno; then
   if test "x$pwllib" = x; then
     saved_LIBS="$LIBS"
-    LIBS="$LIBS $ppllibs -lstdc++ -lm"
+    LIBS="$LIBS $ppllibs -Wl,-Bstatic,-lstdc++,-Bdynamic -lm"
     AC_CHECK_LIB(pwl, PWL_handle_timeout, [pwllib="-lpwl"])
     LIBS="$saved_LIBS"
   fi
 
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx -lstdc++"
+  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx -Wl,-Bstatic,-lstdc++,-Bdynamic"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"
