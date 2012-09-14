@@ -157,7 +157,7 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 #undef  LIB_SPEC
 #define LIB_SPEC             \
   LINUX_OR_ANDROID_LD (LINUX_SUBTARGET_LIB_SPEC,     \
-          LINUX_SUBTARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
+          CRYSTAX_LIB_SPEC " " LINUX_SUBTARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
 
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC             \
