@@ -3803,6 +3803,11 @@ ix86_option_override_internal (bool main_args_p)
 #endif
    }
 
+  /* Default long double to 64-bit for Bionic.  */
+  if (TARGET_HAS_BIONIC
+      && !(target_flags_explicit & MASK_LONG_DOUBLE_64))
+    target_flags |= MASK_LONG_DOUBLE_64;
+
   if (TARGET_AVX)
     {
       /* When not optimize for size, enable vzeroupper optimization for
