@@ -58,6 +58,9 @@
 #define ANDROID_ASM_SPEC \
   "--noexecstack"
 
+#define ANDROID_ASM_SPEC \
+  "--noexecstack"
+
 #define ANDROID_LIB_SPEC \
   "%{!static: -ldl}"
 
