@@ -55,6 +55,9 @@
 #define CRYSTAX_LIB_SPEC \
   "%{!static: -Bstatic -lcrystax -Bdynamic}"
 
+#define ANDROID_ASM_SPEC \
+  "--noexecstack"
+
 #define ANDROID_LIB_SPEC \
   "%{!static: -ldl}"
 
