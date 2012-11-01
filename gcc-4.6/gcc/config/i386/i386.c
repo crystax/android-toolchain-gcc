@@ -2361,6 +2361,9 @@ static int ix86_regparm;
 static const char ix86_force_align_arg_pointer_string[]
   = "force_align_arg_pointer";
 
+/* Stack protector option.  */
+enum stack_protector_guard ix86_stack_protector_guard;
+
 static rtx (*ix86_gen_leave) (void);
 static rtx (*ix86_gen_add3) (rtx, rtx, rtx);
 static rtx (*ix86_gen_sub3) (rtx, rtx, rtx);
@@ -4314,6 +4317,52 @@ ix86_option_override_internal (bool main_args_p)
     {
       /* Disable vzeroupper pass if TARGET_AVX is disabled.  */
       target_flags &= ~MASK_VZEROUPPER;
+    }
+
+  /* Handle ix86_mv_arch_string.  The values allowed are the same as
+     -march=<>.  More than one value is allowed and values must be
+     comma separated.  */
+  if (ix86_mv_arch_string)
+    {
+      char *token;
+      char *varch;
+      int i;
+
+      ix86_varch_specified = 1;
+      memset (ix86_varch, 0, sizeof (ix86_varch));
+      token = XNEWVEC (char, strlen (ix86_mv_arch_string) + 1);
+      strcpy (token, ix86_mv_arch_string);
+      varch = strtok ((char *)token, ",");
+      while (varch != NULL)
+        {
+          for (i = 0; i < pta_size; i++)
+            if (!strcmp (varch, processor_alias_table[i].name))
+	      {
+	 	ix86_varch[processor_alias_table[i].processor] = 1;
+	        break;
+	      }
+          if (i == pta_size)
+            error ("bad value (%s) for %sv-arch=%s %s",
+	           varch, prefix, suffix, sw);
+	  varch = strtok (NULL, ",");
+	}
+      free (token);
+    }
+
+  /* Handle stack protector */
+  if (ix86_stack_protector_guard_string != 0)
+    {
+      if (!strcmp (ix86_stack_protector_guard_string, "tls"))
+	ix86_stack_protector_guard = SSP_TLS;
+      else if (!strcmp (ix86_stack_protector_guard_string, "global"))
+	ix86_stack_protector_guard = SSP_GLOBAL;
+      else
+	error ("bad value (%s) for %sstack-protector-guard=%s %s",
+	       ix86_stack_protector_guard, prefix, suffix, sw);
+    }
+  else
+    {
+      ix86_stack_protector_guard = TARGET_HAS_BIONIC? SSP_GLOBAL : SSP_TLS;
     }
 }
 
