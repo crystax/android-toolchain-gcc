@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "GCC 1"
-.TH GCC 1 "2012-07-31" "gcc-4.6.4" "GNU"
+.TH GCC 1 "2012-10-01" "gcc-4.6.4" "GNU"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -4720,8 +4720,12 @@ Dump after live range splitting.
 .IX Item "-fdump-rtl-dfinish"
 .PD
 These dumps are defined but always produce empty files.
+.IP "\fB\-da\fR" 4
+.IX Item "-da"
+.PD 0
 .IP "\fB\-fdump\-rtl\-all\fR" 4
 .IX Item "-fdump-rtl-all"
+.PD
 Produce all the dumps listed above.
 .IP "\fB\-dA\fR" 4
 .IX Item "-dA"
@@ -4733,10 +4737,6 @@ normal output.
 .IP "\fB\-dH\fR" 4
 .IX Item "-dH"
 Produce a core dump whenever an error occurs.
-.IP "\fB\-dm\fR" 4
-.IX Item "-dm"
-Print statistics on memory usage, at the end of the run, to
-standard error.
 .IP "\fB\-dp\fR" 4
 .IX Item "-dp"
 Annotate the assembler output with a comment indicating which
