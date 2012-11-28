@@ -1,5 +1,5 @@
 This is cp-tools.info, produced by makeinfo version 4.13 from
-/home/mgretton/devel/release/4.7-2012.08/gcc-linaro-4.7-2012.08/libjava/classpath/doc/cp-tools.texinfo.
+/work/release/4.7-2012.10/gcc-linaro-4.7-2012.10/libjava/classpath/doc/cp-tools.texinfo.
 
 This file documents the Tools included in a standard distribution of
 the GNU Classpath project deliverables.
@@ -3090,93 +3090,93 @@ alter text between curly braces.
 
 
 Tag Table:
-Node: Top467
-Node: Applet Tools6187
-Node: appletviewer Tool6760
-Node: gcjwebplugin9875
-Node: Security Tools10187
-Node: jarsigner Tool10840
-Node: Common jarsigner Options11888
-Node: Signing Options13203
-Node: Verification Options15786
-Node: keytool Tool16374
-Node: Getting Help20802
-Node: Common keytool Options21546
-Ref: alias21819
-Ref: keyalg22201
-Ref: keysize22431
-Ref: validity22696
-Ref: storetype22911
-Ref: storepass23242
-Ref: keystore23439
-Ref: provider23982
-Ref: file24389
-Ref: verbose24860
-Node: Distinguished Names24952
-Ref: dn25146
-Node: Add/Update Commands26209
-Node: Command -genkey26737
-Node: Command -import29146
-Node: Command -selfcert32290
-Node: Command -cacert34469
-Node: Command -identitydb35522
-Node: Export Commands36180
-Node: Command -certreq36496
-Node: Command -export38902
-Node: Display Commands40099
-Node: Command -list40431
-Node: Command -printcert41564
-Node: Management Commands41948
-Node: Command -keyclone42380
-Node: Command -storepasswd43783
-Node: Command -keypasswd44512
-Node: Command -delete45706
-Node: Other Tools46329
-Node: jar Tool47171
-Node: javah Tool48563
-Node: gcjh Tool49782
-Node: native2ascii Tool50895
-Node: orbd Tool51356
-Node: serialver Tool52086
-Node: rmid Tool52555
-Node: rmiregistry Tool53496
-Node: tnameserv Tool54336
-Node: gjdoc Tool54960
-Node: Invoking the Standard Doclet56948
-Node: Option Summary by Type58103
-Node: Source Set Options60558
-Node: Source Format Options62422
-Node: Interlinking Options63936
-Node: Generation Options66713
-Node: Taglet Options72810
-Node: Doclet Options75031
-Node: Decoration Options76607
-Node: Output Control Options80698
-Node: Verbosity Options84230
-Node: Virtual Machine Options84576
-Node: Invoking a Custom Doclet85972
-Node: Gjdoc Option Summary86647
-Node: Other Doclets86827
-Node: Built-in Doclets87055
-Node: Using TexiDoclet87310
-Node: Using XmlDoclet87532
-Node: Using IspellDoclet87757
-Node: Using DebugDoclet87985
-Node: Third-party Doclets88185
-Node: DocBook Doclet88401
-Node: PDFDoclet88544
-Node: JUnitDoclet88697
-Node: Gjdoc Concepts88831
-Node: Taglets89075
-Node: Writing Doclets89258
-Node: Doclet Invocation Interface89598
-Node: Using AbstractDoclet90390
-Node: GNU Doclet SPI93384
-Node: XHTML Fragments94856
-Node: First Sentence Detector96289
-Node: Adding Custom Resources98051
-Node: I18N Issues99747
-Node: Language Resources100249
-Node: Message Formats103913
+Node: Top452
+Node: Applet Tools6172
+Node: appletviewer Tool6745
+Node: gcjwebplugin9860
+Node: Security Tools10172
+Node: jarsigner Tool10825
+Node: Common jarsigner Options11873
+Node: Signing Options13188
+Node: Verification Options15771
+Node: keytool Tool16359
+Node: Getting Help20787
+Node: Common keytool Options21531
+Ref: alias21804
+Ref: keyalg22186
+Ref: keysize22416
+Ref: validity22681
+Ref: storetype22896
+Ref: storepass23227
+Ref: keystore23424
+Ref: provider23967
+Ref: file24374
+Ref: verbose24845
+Node: Distinguished Names24937
+Ref: dn25131
+Node: Add/Update Commands26194
+Node: Command -genkey26722
+Node: Command -import29131
+Node: Command -selfcert32275
+Node: Command -cacert34454
+Node: Command -identitydb35507
+Node: Export Commands36165
+Node: Command -certreq36481
+Node: Command -export38887
+Node: Display Commands40084
+Node: Command -list40416
+Node: Command -printcert41549
+Node: Management Commands41933
+Node: Command -keyclone42365
+Node: Command -storepasswd43768
+Node: Command -keypasswd44497
+Node: Command -delete45691
+Node: Other Tools46314
+Node: jar Tool47156
+Node: javah Tool48548
+Node: gcjh Tool49767
+Node: native2ascii Tool50880
+Node: orbd Tool51341
+Node: serialver Tool52071
+Node: rmid Tool52540
+Node: rmiregistry Tool53481
+Node: tnameserv Tool54321
+Node: gjdoc Tool54945
+Node: Invoking the Standard Doclet56933
+Node: Option Summary by Type58088
+Node: Source Set Options60543
+Node: Source Format Options62407
+Node: Interlinking Options63921
+Node: Generation Options66698
+Node: Taglet Options72795
+Node: Doclet Options75016
+Node: Decoration Options76592
+Node: Output Control Options80683
+Node: Verbosity Options84215
+Node: Virtual Machine Options84561
+Node: Invoking a Custom Doclet85957
+Node: Gjdoc Option Summary86632
+Node: Other Doclets86812
+Node: Built-in Doclets87040
+Node: Using TexiDoclet87295
+Node: Using XmlDoclet87517
+Node: Using IspellDoclet87742
+Node: Using DebugDoclet87970
+Node: Third-party Doclets88170
+Node: DocBook Doclet88386
+Node: PDFDoclet88529
+Node: JUnitDoclet88682
+Node: Gjdoc Concepts88816
+Node: Taglets89060
+Node: Writing Doclets89243
+Node: Doclet Invocation Interface89583
+Node: Using AbstractDoclet90375
+Node: GNU Doclet SPI93369
+Node: XHTML Fragments94841
+Node: First Sentence Detector96274
+Node: Adding Custom Resources98036
+Node: I18N Issues99732
+Node: Language Resources100234
+Node: Message Formats103898
 
 End Tag Table
