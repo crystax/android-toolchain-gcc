@@ -1,3 +1,59 @@
+2012-10-17  Sofiane Naci  <sofiane.naci@arm.com>
+
+	* config/aarch64/aarch64.md (<optab><mode>3): Update constraint
+	for operand 0.
+	Update scheduling attribute for the second alternative.
+
+2012-10-16  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/arm_neon.h (vmla_lane_f32, vmla_lane_s16,
+	vmla_lane_s32, vmla_lane_u16, vmla_lane_u32, vmlal_lane_s16, 
+	vmlal_lane_s32, vmlal_lane_u16, vmlal_lane_u32,
+	vmls_lane_s16, vmls_lane_s32, vmls_lane_u16, vmls_lane_u32,
+	vmlsl_lane_s16, vmlsl_lane_s32, vmlsl_lane_u16,
+	vmlsl_lane_u32, vmul_lane_f32, vmul_lane_s16, vmul_lane_s32,
+	vmul_lane_u16, vmul_lane_u32, vmull_lane_s16, vmull_lane_s32,
+	vmull_lane_u16, vmull_lane_u32, vmulq_lane_f32, vmulq_lane_f64,
+	vmulq_lane_s16, vmulq_lane_s32, vmulq_lane_u16, vmulq_lane_u32,
+	vqdmlal_lane_s16, vqdmlal_lane_s32, vqdmlalh_lane_s16,
+	vqdmlsl_lane_s16, vqdmlsl_lane_s32, vqdmulh_lane_s16, vqdmulh_lane_s32,
+	vqdmulhq_lane_s16, vqdmulhq_lane_s32, vqdmull_lane_s16,
+	vqdmull_lane_s32, vqrdmulh_lane_s16, vqrdmulh_lane_s32,
+	vqrdmulhq_lane_s16, vqrdmulhq_lane_s32): Update prototype and 
+	implementation.
+
+2012-10-16  Ian Bolton  <ian.bolton@arm.com>
+
+	* gcc/config/aarch64/aarch64.md
+	(<optab><ALLX:mode>_shft_<GPI:mode>): Restrict operands.
+
+2012-10-16  Marcus Shawcroft <marcus.shawcroft@arm.com>
+
+	* config/aarch64/aarch64-protos.h (aarch64_split_doubleword_move):
+	Rename to aarch64_split_128bit_move.
+	(aarch64_split_128bit_move_p): New.
+	* config/aarch64/aarch64.c (aarch64_split_doubleword_move):
+	Rename to aarch64_split_128bit_move.
+	(aarch64_split_128bit_move_p): New.
+	* config/aarch64/aarch64.md: Adjust TImode move split.
+
+2012-10-15  Chris Schlumberger-Socha <chris.schlumberger-socha@arm.com>
+
+        * config/aarch64/aarch64.h (TARGET_CPU_CPP_BUILTINS): Add predefine for
+	AArch64 code models.
+
+2012-10-05  Tejas Belagod  <tejas.belagod@arm.com>
+
+	* config/aarch64/arm_neon.h (vqdmlalh_lane_s16, vqdmlalh_s16,
+	vqdmlals_lane_s32, vqdmlals_s32, vqdmlslh_lane_s16, vqdmlslh_s16,
+	vqdmlsls_lane_s32, vqdmlsls_s32): Remove old temporary inline asm 
+	implementations.
+
+2012-10-05  Sofiane Naci  <sofiane.naci@arm.com>
+
+	* config/aarch64/aarch64.md (*fnmadd<mode>4): Add missing
+	constraints.
+
 2012-10-04  Tejas Belagod  <tejas.belagod@arm.com>
 
 	* config/aarch64/arm_neon.h: Rename vqml<as>l<sh>_* to

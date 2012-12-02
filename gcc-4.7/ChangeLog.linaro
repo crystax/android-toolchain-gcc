@@ -1,3 +1,109 @@
+2012-11-13  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	GCC Linaro 4.7-2012.11 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-11-09  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF arm/aarch64-4.7-branch r193293..r193328.
+
+	Backport arm-aarch64-4.7 r193293:
+	Merge from gcc trunk 193291.
+	
+	gcc/ChangeLog
+	
+	2012-11-07  Yufeng Zhang  <yufeng.zhang@arm.com>
+	
+	* config/aarch64/aarch64.c (aarch64_expand_prologue): For the
+	load-pair with writeback instruction, replace
+	aarch64_set_frame_expr with add_reg_note (REG_CFA_ADJUST_CFA);
+	add new local variable 'cfa_reg' and use it.
+	
+	gcc/testsuite/ChangeLog
+	
+	2012-11-07  Yufeng Zhang  <yufeng.zhang@arm.com>
+	
+	* gcc.target/aarch64/dwarf-cfa-reg.c: New test.
+
+	Backport arm-aarch64-4.7 r193300:
+	Merge from gcc trunk 193299.
+	
+	gcc/ChangeLog
+	
+	2012-11-07  Yufeng Zhang  <yufeng.zhang@arm.com>
+	
+	* config/aarch64/aarch64.c (aarch64_expand_prologue): add the missing
+	argument 'Pmode' to the 'plus_constant' call.
+
+	Backport arm-aarch64-4.7 r193328:
+	gcc/ChangeLog
+	
+	2012-11-08  Yufeng Zhang  <yufeng.zhang@arm.com>
+	
+	Revert:
+	2012-11-07  Yufeng Zhang  <yufeng.zhang@arm.com>
+	
+	* config/aarch64/aarch64.c (aarch64_expand_prologue): add the missing
+	argument 'Pmode' to the 'plus_constant' call.
+
+2012-11-07  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.7.2 (svn branches/gcc-4_7-branch 193200).
+
+2012-10-18  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF arm/aarch64-4.7-branch r192117..r192536.
+
+	Backport arm-aarch64-4.7 r192117:
+	[AARCH64-4.7] Add missing constraints to fnmadd.
+
+	* config/aarch64/aarch64.md (*fnmadd<mode>4): Add missing
+	constraints.
+
+	Backport arm-aarch64-4.7 r192127:
+	[AARCH64-4.7] Remove inline asm implementations of vqdmlxl.
+
+	Backport arm-aarch64-4.7 r192501:
+	[AARCH64-4.7] Add predefines for AArch64 code models.
+
+	2012-10-16  Chris Schlumberger-Socha <chris.schlumberger-socha@arm.com>
+
+	* config/aarch64/aarch64.h (TARGET_CPU_CPP_BUILTINS): Add predefine for
+	AArch64 code models.
+
+	Backport arm-aarch64-4.7 r192504:
+	[AARCH64-4.7] Fix ICE in aarch64_split_doubleword_move.
+
+	2012-10-16  Marcus Shawcroft <marcus.shawcroft@arm.com>
+
+	* config/aarch64/aarch64-protos.h (aarch64_split_doubleword_move):
+	Rename to aarch64_split_128bit_move.
+	(aarch64_split_128bit_move_p): New.
+	* config/aarch64/aarch64.c (aarch64_split_doubleword_move):
+	Rename to aarch64_split_128bit_move.
+	(aarch64_split_128bit_move_p): New.
+	* config/aarch64/aarch64.md: Adjust TImode move split.
+
+	Backport arm-aarch64-4.7 r192507:
+	Only permit valid operand range for SBFIZ
+
+	Backport arm-aarch64-4.7 r192508:
+	[AARCH64-4.7] Fix saturating doubling multiply NEON Intrinsics.
+
+	Backport arm-aarch64-4.7 r192536:
+	[AArch64] Update logical immediate instruction pattern.
+
+	* config/aarch64/aarch64.md (<optab><mode>3):
+	Update constraint for operand 0.
+	Update scheduling attribute for the second alternative.
+
+2012-10-09  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-10-09  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
 
 	GCC Linaro 4.7-2012.10 released.

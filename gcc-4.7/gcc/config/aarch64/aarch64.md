@@ -947,10 +947,10 @@
 (define_split
    [(set (match_operand:TI 0 "register_operand" "")
 	 (match_operand:TI 1 "aarch64_reg_or_imm" ""))]
-  "reload_completed"
+  "reload_completed && aarch64_split_128bit_move_p (operands[0], operands[1])"
   [(const_int 0)]
 {
-  aarch64_split_doubleword_move (operands[0], operands[1]);
+  aarch64_split_128bit_move (operands[0], operands[1]);
   DONE;
 })
 
@@ -1991,12 +1991,12 @@
 ;; -------------------------------------------------------------------
 
 (define_insn "<optab><mode>3"
-  [(set (match_operand:GPI 0 "register_operand" "=r,r")
+  [(set (match_operand:GPI 0 "register_operand" "=r,rk")
 	(LOGICAL:GPI (match_operand:GPI 1 "register_operand" "%r,r")
 		     (match_operand:GPI 2 "aarch64_logical_operand" "r,<lconst>")))]
   ""
   "<logical>\\t%<w>0, %<w>1, %<w>2"
-  [(set_attr "v8type" "logic")
+  [(set_attr "v8type" "logic,logic_imm")
    (set_attr "mode" "<MODE>")])
 
 (define_insn "*<LOGICAL:optab>_<SHIFT:optab><mode>3"
@@ -2315,8 +2315,13 @@
 	(ashift:GPI (ANY_EXTEND:GPI
 		     (match_operand:ALLX 1 "register_operand" "r"))
 		    (match_operand 2 "const_int_operand" "n")))]
-  ""
-  "<su>bfiz\\t%<GPI:w>0, %<GPI:w>1, %2, #<ALLX:sizen>"
+  "UINTVAL (operands[2]) < <GPI:sizen>"
+{
+  operands[3] = (<ALLX:sizen> <= (<GPI:sizen> - UINTVAL (operands[2])))
+	      ? GEN_INT (<ALLX:sizen>)
+	      : GEN_INT (<GPI:sizen> - UINTVAL (operands[2]));
+  return "<su>bfiz\t%<GPI:w>0, %<GPI:w>1, %2, %3";
+}
   [(set_attr "v8type" "bfm")
    (set_attr "mode" "<GPI:MODE>")]
 )
@@ -2512,10 +2517,10 @@
 
 ;; If signed zeros are ignored, -(a * b + c) = -a * b - c.
 (define_insn "*fnmadd<mode>4"
-  [(set (match_operand:GPF 0 "register_operand")
-	(neg:GPF (fma:GPF (match_operand:GPF 1 "register_operand")
-			  (match_operand:GPF 2 "register_operand")
-			  (match_operand:GPF 3 "register_operand"))))]
+  [(set (match_operand:GPF 0 "register_operand" "=w")
+	(neg:GPF (fma:GPF (match_operand:GPF 1 "register_operand" "w")
+			  (match_operand:GPF 2 "register_operand" "w")
+			  (match_operand:GPF 3 "register_operand" "w"))))]
   "!HONOR_SIGNED_ZEROS (<MODE>mode) && TARGET_FLOAT"
   "fnmadd\\t%<s>0, %<s>1, %<s>2, %<s>3"
   [(set_attr "v8type" "fmadd")
