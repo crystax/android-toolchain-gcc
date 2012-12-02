@@ -1,3 +1,69 @@
+2012-11-12  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	GCC Linaro 4.6-2012.11 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-11-07  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 193199).
+
+2012-10-08  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
+2012-10-08  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	GCC Linaro 4.6-2012.10 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-10-01  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 191880)
+
+2012-09-18  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	LP 1029454
+	Backport from mainline r183524:
+
+	gcc/
+	2012-01-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/51987
+	* tree-data-ref.c (get_references_in_stmt): Handle references in
+	non-volatile GIMPLE_ASM.
+
+	gcc/testsuite/
+	2012-01-25  Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/51987
+	* gcc.target/i386/pr51987.c: New test.
+
+2012-09-12  Michael Hope  <michael.hope@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
+2012-09-12  Michael Hope  <michael.hope@linaro.org>
+
+	GCC Linaro 4.6-2012.09 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-09-11  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 191000).
+
+2012-08-13  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-08-13  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
 
 	GCC Linaro 4.6-2012.08 released.
