@@ -1,3 +1,19 @@
+2012-11-12  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	GCC Linaro 4.6-2012.11 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2012-11-07  Michael Hope  <michael.hope@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 193199).
+
+2012-10-08  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-10-08  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
 
 	GCC Linaro 4.6-2012.10 released.

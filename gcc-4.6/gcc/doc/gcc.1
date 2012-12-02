@@ -124,7 +124,7 @@
 .\" ========================================================================
 .\"
 .IX Title "GCC 1"
-.TH GCC 1 "2012-10-01" "gcc-4.6.4" "GNU"
+.TH GCC 1 "2012-11-06" "gcc-4.6.4" "GNU"
 .\" For nroff, turn off justification.  Always turn off hyphenation; it makes
 .\" way too many mistakes in technical documents.
 .if n .ad l
@@ -606,7 +606,8 @@ in the following sections.
 \&\-mno\-wide\-multiply  \-mrtd  \-malign\-double 
 \&\-mpreferred\-stack\-boundary=\fR\fInum\fR
 \&\fB\-mincoming\-stack\-boundary=\fR\fInum\fR 
-\&\fB\-mcld \-mcx16 \-msahf \-mmovbe \-mcrc32 \-mrecip \-mvzeroupper 
+\&\fB\-mcld \-mcx16 \-msahf \-mmovbe \-mcrc32 \-mrecip 
+\&\-mvzeroupper \-mprefer\-avx128 
 \&\-mmmx  \-msse  \-msse2 \-msse3 \-mssse3 \-msse4.1 \-msse4.2 \-msse4 \-mavx 
 \&\-maes \-mpclmul \-mfsgsbase \-mrdrnd \-mf16c \-mfused\-madd 
 \&\-msse4a \-m3dnow \-mpopcnt \-mabm \-mbmi \-mtbm \-mfma4 \-mxop \-mlwp 
@@ -11813,6 +11814,10 @@ This option instructs \s-1GCC\s0 to emit a \f(CW\*(C`vzeroupper\*(C'\fR instruct
 before a transfer of control flow out of the function to minimize
 \&\s-1AVX\s0 to \s-1SSE\s0 transition penalty as well as remove unnecessary zeroupper 
 intrinsics.
+.IP "\fB\-mprefer\-avx128\fR" 4
+.IX Item "-mprefer-avx128"
+This option instructs \s-1GCC\s0 to use 128\-bit \s-1AVX\s0 instructions instead of
+256\-bit \s-1AVX\s0 instructions in the auto-vectorizer.
 .IP "\fB\-mcx16\fR" 4
 .IX Item "-mcx16"
 This option will enable \s-1GCC\s0 to use \s-1CMPXCHG16B\s0 instruction in generated code.

@@ -1,3 +1,86 @@
+2012-10-30  Andrey Belevantsev  <abel@ispras.ru>
+
+	Backport from mainline
+	2012-01-25 Andrey Belevantsev <abel@ispras.ru>
+	
+	PR rtl-optimization/48374
+	* sel-sched-ir.h (get_all_loop_exits): Check for zero successors. 	
+
+2012-10-22  Andrey Belevantsev  <abel@ispras.ru>
+
+	Backport from mainline
+	2012-08-09  Andrey Belevantsev  <abel@ispras.ru>
+
+	PR rtl-optimization/53701
+	* sel-sched.c (vinsn_vec_has_expr_p): Clarify function comment.
+	Process not only expr's vinsns but all old vinsns from expr's
+	history of changes.
+
+2012-10-19  Marek Polacek  <polacek@redhat.com>
+
+	Backported from mainline
+	2012-10-19  Marek Polacek  <polacek@redhat.com>
+
+	PR middle-end/54945
+	* fold-const.c (fold_sign_changed_comparison):  Punt if folding
+	pointer/non-pointer comparison.
+
+2012-10-19  Alan Modra  <amodra@gmail.com>
+
+	* configure.ac (HAVE_LD_NO_DOT_SYMS): Set if using gold.
+	(HAVE_LD_LARGE_TOC): Likewise.
+	* configure: Regenerate.
+
+2012-10-17  DJ Delorie  <dj@delorie.com>
+
+	PR target/54950
+	* config/m32c/predicates.md (m32c_const_u16_operand): New.
+	* config/m32c/muldiv.md: Use it.
+
+2012-10-10  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	* config/pa/pa.md (addhi3): Fix typo in last change.
+
+2012-10-05  John David Anglin  <dave.anglin@nrc-cnrc.gc.ca>
+
+	* config/pa/pa.md: Adjust unamed HImode add insn pattern.
+
+2012-10-05  Jan Hubicka  <jh@suse.cz>
+	    Jakub Jelinek  <jakub@redhat.com>
+
+	PR tree-optimization/33763
+	* tree-inline.c (expand_call_inline): Silently ignore always_inline
+	attribute for redefined extern inline functions.
+
+2012-10-03  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backported from mainline
+	2012-10-03  Andrew W. Nosenko <andrew.w.nosenko@gmail.com>
+
+	* config/i386/driver-i386.c (host_detect_local_cpu): Fix logic
+	in SSE and YMM state support check for -march=native.
+
+2012-10-02  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backported from mainline
+	2012-10-02  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/54785
+	* doc/invoke.texi: Document -mprefer-avx128.
+
+2012-10-02  H.J. Lu  <hongjiu.lu@intel.com>
+
+	Backported from mainline
+	2012-10-02  H.J. Lu  <hongjiu.lu@intel.com>
+
+	PR target/54741
+	* config/i386/driver-i386.c (XCR_XFEATURE_ENABLED_MASK): New.
+	(XSTATE_FP): Likewise.
+	(XSTATE_SSE): Likewise.
+	(XSTATE_YMM): Likewise.
+	(host_detect_local_cpu): Disable AVX, FMA, FMA4 and XOP if SSE
+	and YMM states aren't supported.
+
 2012-09-21  Richard Guenther  <rguenther@suse.de>
 
 	PR middle-end/54638
