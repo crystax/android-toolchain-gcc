@@ -1,7 +1,7 @@
 /* Configuration file for ARM GNU/Linux EABI targets.
-   Copyright (C) 2004, 2005, 2006, 2007, 2009, 2010, 2011
+   Copyright (C) 2004, 2005, 2006, 2007, 2009, 2010, 2011, 2013
    Free Software Foundation, Inc.
-   Contributed by CodeSourcery, LLC   
+   Contributed by CodeSourcery, LLC
 
    This file is part of GCC.
 
@@ -101,7 +101,7 @@
 #undef  LIB_SPEC
 #define LIB_SPEC							\
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_LIB_SPEC,			\
-		       CRYSTAX_LIB_SPEC " " GNU_USER_TARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
+		       CRYSTAX_LIB_SPEC " " GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
 
 #undef	STARTFILE_SPEC
 #define STARTFILE_SPEC \

@@ -1,6 +1,6 @@
 /* Definitions for MIPS running Linux-based GNU systems with ELF format.
    Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2010, 2011 Free Software Foundation, Inc.
+   2007, 2008, 2010, 2011, 2013 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -102,11 +102,13 @@ along with GCC; see the file COPYING3.  If not see
 #undef ASM_OUTPUT_REG_POP
 
 #undef LINUX_SUBTARGET_LIB_SPEC
-#define LINUX_SUBTARGET_LIB_SPEC "\
-%{pthread:-lpthread} \
+#define LINUX_SUBTARGET_LIB_SPEC_LESS_PTHREAD "\
 %{shared:-lc} \
 %{!shared: \
   %{profile:-lc_p} %{!profile:-lc}}"
+#define LINUX_SUBTARGET_LIB_SPEC "\
+%{pthread:-lpthread} " \
+LINUX_SUBTARGET_LIB_SPEC_LESS_PTHREAD
 
 #define MD_UNWIND_SUPPORT "config/mips/linux-unwind.h"
 
@@ -168,7 +170,7 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 #undef  LIB_SPEC
 #define LIB_SPEC							\
   LINUX_OR_ANDROID_LD (LINUX_SUBTARGET_LIB_SPEC,			\
-		       CRYSTAX_LIB_SPEC " " LINUX_SUBTARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
+		       CRYSTAX_LIB_SPEC " " LINUX_SUBTARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
 
 #undef STARTFILE_SPEC
 #define STARTFILE_SPEC							\

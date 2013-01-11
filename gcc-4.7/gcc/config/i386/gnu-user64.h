@@ -1,5 +1,5 @@
 /* Definitions for AMD x86-64 using GNU userspace.
-   Copyright (C) 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Copyright (C) 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013
    Free Software Foundation, Inc.
    Contributed by Jan Hubicka <jh@suse.cz>, based on linux.h.
 
@@ -99,7 +99,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef  LIB_SPEC
 #define LIB_SPEC \
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_LIB_SPEC, \
-		       CRYSTAX_LIB_SPEC " " GNU_USER_TARGET_LIB_SPEC " " ANDROID_LIB_SPEC)
+		       CRYSTAX_LIB_SPEC " " GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
 
 #undef  STARTFILE_SPEC
 #define STARTFILE_SPEC \
@@ -142,7 +142,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 
 #ifdef TARGET_LIBC_PROVIDES_SSP
 /* i386 glibc provides __stack_chk_guard in %gs:0x14,
-   x32 glibc provides it in %fs:0x18. 
+   x32 glibc provides it in %fs:0x18.
    x86_64 glibc provides it in %fs:0x28.  */
 #define TARGET_THREAD_SSP_OFFSET \
   (TARGET_64BIT ? (TARGET_X32 ? 0x18 : 0x28) : 0x14)
