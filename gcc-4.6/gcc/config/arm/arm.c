@@ -630,6 +630,9 @@ static const struct default_options arm_option_optimization_table[] =
 
 struct gcc_target targetm = TARGET_INITIALIZER;
 
+
+#define SHORTEST_FAR_JUMP_LENGTH 2040
+
 /* Obstack for minipool constant handling.  */
 static struct obstack minipool_obstack;
 static char *         minipool_startobj;
@@ -21477,6 +21480,17 @@ thumb_shiftable_const (unsigned HOST_WIDE_INT val)
       return 1;
 
   return 0;
+}
+
+/* Computes the maximum possible function length. */
+static int
+estimate_function_length (void)
+{
+  rtx insn;
+  int length = 0;
+  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))
+    length += get_attr_length(insn);
+  return length;
 }
 
 /* Returns nonzero if the current function contains,
