@@ -5764,8 +5764,7 @@ fi
     LDFLAGS="$saved_LDFLAGS"
   fi
 
-  pwllib="-lpwl"
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx $with_host_libstdcxx"
+      ppllibs="$ppllibs -lppl_c -lppl -lgmpxx $with_host_libstdcxx"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"
