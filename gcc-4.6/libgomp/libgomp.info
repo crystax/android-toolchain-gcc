@@ -1,5 +1,5 @@
 This is libgomp.info, produced by makeinfo version 4.13 from
-/work/release/4.6-2012.11/gcc-linaro-4.6-2012.11/libgomp/libgomp.texi.
+/work1/rouxy/Linaro/gcc/gcc-linaro/release/4.6-2012.12/gcc-linaro-4.6-2012.12/libgomp/libgomp.texi.
 
 Copyright (C) 2006, 2007, 2008, 2010, 2011 Free Software Foundation,
 Inc.
@@ -2444,70 +2444,70 @@ Index
 
 
 Tag Table:
-Node: Top2089
-Node: Enabling OpenMP3283
-Node: Runtime Library Routines4068
-Node: omp_get_active_level6443
-Node: omp_get_ancestor_thread_num7147
-Node: omp_get_dynamic8074
-Node: omp_get_level8952
-Node: omp_get_max_active_levels9576
-Node: omp_get_max_threads10279
-Node: omp_get_nested11035
-Node: omp_get_num_procs11947
-Node: omp_get_num_threads12465
-Node: omp_get_schedule13547
-Node: omp_get_team_size14463
-Node: omp_get_thread_limit15425
-Node: omp_get_thread_num16048
-Node: omp_in_parallel16916
-Node: omp_set_dynamic17566
-Node: omp_set_max_active_levels18406
-Node: omp_set_nested19186
-Node: omp_set_num_threads20065
-Node: omp_set_schedule20901
-Node: omp_init_lock21972
-Node: omp_set_lock22623
-Node: omp_test_lock23474
-Node: omp_unset_lock24503
-Node: omp_destroy_lock25430
-Node: omp_init_nest_lock26104
-Node: omp_set_nest_lock26837
-Node: omp_test_nest_lock27748
-Node: omp_unset_nest_lock28846
-Node: omp_destroy_nest_lock29857
-Node: omp_get_wtick30605
-Node: omp_get_wtime31196
-Node: Environment Variables31970
-Node: OMP_DYNAMIC33031
-Node: OMP_MAX_ACTIVE_LEVELS33599
-Node: OMP_NESTED34236
-Node: OMP_NUM_THREADS34840
-Node: OMP_SCHEDULE35408
-Node: OMP_STACKSIZE36102
-Node: OMP_THREAD_LIMIT36926
-Node: OMP_WAIT_POLICY37521
-Node: GOMP_CPU_AFFINITY38086
-Node: GOMP_STACKSIZE39587
-Node: The libgomp ABI40395
-Node: Implementing MASTER construct41194
-Node: Implementing CRITICAL construct41608
-Node: Implementing ATOMIC construct42347
-Node: Implementing FLUSH construct42828
-Node: Implementing BARRIER construct43099
-Node: Implementing THREADPRIVATE construct43368
-Node: Implementing PRIVATE clause44020
-Node: Implementing FIRSTPRIVATE LASTPRIVATE COPYIN and COPYPRIVATE clauses44601
-Node: Implementing REDUCTION clause45925
-Node: Implementing PARALLEL construct46482
-Node: Implementing FOR construct47739
-Node: Implementing ORDERED construct49737
-Node: Implementing SECTIONS construct50043
-Node: Implementing SINGLE construct50809
-Node: Reporting Bugs51471
-Node: Copying51781
-Node: GNU Free Documentation License70991
-Node: Funding96133
-Node: Index98650
+Node: Top2118
+Node: Enabling OpenMP3312
+Node: Runtime Library Routines4097
+Node: omp_get_active_level6472
+Node: omp_get_ancestor_thread_num7176
+Node: omp_get_dynamic8103
+Node: omp_get_level8981
+Node: omp_get_max_active_levels9605
+Node: omp_get_max_threads10308
+Node: omp_get_nested11064
+Node: omp_get_num_procs11976
+Node: omp_get_num_threads12494
+Node: omp_get_schedule13576
+Node: omp_get_team_size14492
+Node: omp_get_thread_limit15454
+Node: omp_get_thread_num16077
+Node: omp_in_parallel16945
+Node: omp_set_dynamic17595
+Node: omp_set_max_active_levels18435
+Node: omp_set_nested19215
+Node: omp_set_num_threads20094
+Node: omp_set_schedule20930
+Node: omp_init_lock22001
+Node: omp_set_lock22652
+Node: omp_test_lock23503
+Node: omp_unset_lock24532
+Node: omp_destroy_lock25459
+Node: omp_init_nest_lock26133
+Node: omp_set_nest_lock26866
+Node: omp_test_nest_lock27777
+Node: omp_unset_nest_lock28875
+Node: omp_destroy_nest_lock29886
+Node: omp_get_wtick30634
+Node: omp_get_wtime31225
+Node: Environment Variables31999
+Node: OMP_DYNAMIC33060
+Node: OMP_MAX_ACTIVE_LEVELS33628
+Node: OMP_NESTED34265
+Node: OMP_NUM_THREADS34869
+Node: OMP_SCHEDULE35437
+Node: OMP_STACKSIZE36131
+Node: OMP_THREAD_LIMIT36955
+Node: OMP_WAIT_POLICY37550
+Node: GOMP_CPU_AFFINITY38115
+Node: GOMP_STACKSIZE39616
+Node: The libgomp ABI40424
+Node: Implementing MASTER construct41223
+Node: Implementing CRITICAL construct41637
+Node: Implementing ATOMIC construct42376
+Node: Implementing FLUSH construct42857
+Node: Implementing BARRIER construct43128
+Node: Implementing THREADPRIVATE construct43397
+Node: Implementing PRIVATE clause44049
+Node: Implementing FIRSTPRIVATE LASTPRIVATE COPYIN and COPYPRIVATE clauses44630
+Node: Implementing REDUCTION clause45954
+Node: Implementing PARALLEL construct46511
+Node: Implementing FOR construct47768
+Node: Implementing ORDERED construct49766
+Node: Implementing SECTIONS construct50072
+Node: Implementing SINGLE construct50838
+Node: Reporting Bugs51500
+Node: Copying51810
+Node: GNU Free Documentation License71020
+Node: Funding96162
+Node: Index98679
 
 End Tag Table
