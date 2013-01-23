@@ -546,6 +546,34 @@ get_mode_alignment (enum machine_mode mode)
   return MIN (BIGGEST_ALIGNMENT, MAX (1, mode_base_align[mode]*BITS_PER_UNIT));
 }
 
+/* Return the natural mode of an array, given that it is SIZE bytes in
+   total and has elements of type ELEM_TYPE.  */
+
+static enum machine_mode
+mode_for_array (tree elem_type, tree size)
+{
+  tree elem_size;
+  unsigned HOST_WIDE_INT int_size, int_elem_size;
+  bool limit_p;
+
+  /* One-element arrays get the component type's mode.  */
+  elem_size = TYPE_SIZE (elem_type);
+  if (simple_cst_equal (size, elem_size))
+    return TYPE_MODE (elem_type);
+
+  limit_p = true;
+  if (host_integerp (size, 1) && host_integerp (elem_size, 1))
+    {
+      int_size = tree_low_cst (size, 1);
+      int_elem_size = tree_low_cst (elem_size, 1);
+      if (int_elem_size > 0
+	  && int_size % int_elem_size == 0
+	  && targetm.array_mode_supported_p (TYPE_MODE (elem_type),
+					     int_size / int_elem_size))
+	limit_p = false;
+    }
+  return mode_for_size_tree (size, MODE_INT, limit_p);
+}
 
 /* Subroutine of layout_decl: Force alignment required for the data type.
    But if the decl itself wants greater alignment, don't override that.  */
@@ -660,12 +688,13 @@ layout_decl (tree decl, unsigned int known_align)
 	  /* See if we can use an ordinary integer mode for a bit-field.
 	     Conditions are: a fixed size that is correct for another mode,
 	     occupying a complete byte or bytes on proper boundary,
-	     and not volatile or not -fstrict-volatile-bitfields.  */
+	     and not -fstrict-volatile-bitfields.  If the latter is set,
+	     we unfortunately can't check TREE_THIS_VOLATILE, as a cast
+	     may make a volatile object later.  */
 	  if (TYPE_SIZE (type) != 0
 	      && TREE_CODE (TYPE_SIZE (type)) == INTEGER_CST
 	      && GET_MODE_CLASS (TYPE_MODE (type)) == MODE_INT
-	      && !(TREE_THIS_VOLATILE (decl)
-		   && flag_strict_volatile_bitfields > 0))
+	      && flag_strict_volatile_bitfields <= 0)
 	    {
 	      enum machine_mode xmode
 		= mode_for_size_tree (DECL_SIZE (decl), MODE_INT, 1);
@@ -1177,15 +1206,14 @@ place_field (record_layout_info rli, tree field)
     }
 
   /* Does this field automatically have alignment it needs by virtue
-     of the fields that precede it and the record's own alignment?
-     We already align ms_struct fields, so don't re-align them.  */
-  if (known_align < desired_align
-      && !targetm.ms_bitfield_layout_p (rli->t))
+     of the fields that precede it and the record's own alignment?  */
+  if (known_align < desired_align)
     {
       /* No, we need to skip space before this field.
 	 Bump the cumulative size to multiple of field alignment.  */
 
-      if (DECL_SOURCE_LOCATION (field) != BUILTINS_LOCATION)
+      if (!targetm.ms_bitfield_layout_p (rli->t)
+          && DECL_SOURCE_LOCATION (field) != BUILTINS_LOCATION)
 	warning (OPT_Wpadded, "padding struct to align %q+D", field);
 
       /* If the alignment is still within offset_align, just align
@@ -1207,7 +1235,8 @@ place_field (record_layout_info rli, tree field)
 
       if (! TREE_CONSTANT (rli->offset))
 	rli->offset_align = desired_align;
-
+      if (targetm.ms_bitfield_layout_p (rli->t))
+	rli->prev_field = NULL;
     }
 
   /* Handle compatibility with PCC.  Note that if the record has any
@@ -1926,9 +1955,17 @@ layout_type (tree type)
 	TYPE_SIZE (type) = int_const_binop (MULT_EXPR, TYPE_SIZE (innertype),
 					    bitsize_int (nunits), 0);
 
-	/* Always naturally align vectors.  This prevents ABI changes
-	   depending on whether or not native vector modes are supported.  */
-	TYPE_ALIGN (type) = tree_low_cst (TYPE_SIZE (type), 0);
+	/* For vector types, we do not default to the mode's alignment.
+	   Instead, query a target hook, defaulting to natural alignment.
+	   This prevents ABI changes depending on whether or not native
+	   vector modes are supported.  */
+	TYPE_ALIGN (type) = targetm.vector_alignment (type);
+
+	/* However, if the underlying mode requires a bigger alignment than
+	   what the target hook provides, we cannot use the mode.  For now,
+	   simply reject that case.  */
+	gcc_assert (TYPE_ALIGN (type)
+		    >= GET_MODE_ALIGNMENT (TYPE_MODE (type)));
         break;
       }
 
@@ -2039,14 +2076,8 @@ layout_type (tree type)
 	    && (TYPE_MODE (TREE_TYPE (type)) != BLKmode
 		|| TYPE_NO_FORCE_BLK (TREE_TYPE (type))))
 	  {
-	    /* One-element arrays get the component type's mode.  */
-	    if (simple_cst_equal (TYPE_SIZE (type),
-				  TYPE_SIZE (TREE_TYPE (type))))
-	      SET_TYPE_MODE (type, TYPE_MODE (TREE_TYPE (type)));
-	    else
-	      SET_TYPE_MODE (type, mode_for_size_tree (TYPE_SIZE (type),
-						       MODE_INT, 1));
-
+	    SET_TYPE_MODE (type, mode_for_array (TREE_TYPE (type),
+						 TYPE_SIZE (type)));
 	    if (TYPE_MODE (type) != BLKmode
 		&& STRICT_ALIGNMENT && TYPE_ALIGN (type) < BIGGEST_ALIGNMENT
 		&& TYPE_ALIGN (type) < GET_MODE_ALIGNMENT (TYPE_MODE (type)))

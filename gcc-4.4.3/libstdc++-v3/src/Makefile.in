@@ -350,7 +350,7 @@ WARN_CXXFLAGS = \
 AM_CPPFLAGS = $(GLIBCXX_INCLUDES)
 
 # Cross compiler support.
-toolexeclib_LTLIBRARIES = libstdc++.la
+toolexeclib_LTLIBRARIES = libgnustl_shared.la
 @ENABLE_SYMVERS_DARWIN_TRUE@@ENABLE_SYMVERS_TRUE@version_arg = -Wl,-exported_symbols_list,libstdc++-symbols.explist
 @ENABLE_SYMVERS_FALSE@version_arg = 
 @ENABLE_SYMVERS_GNU_NAMESPACE_TRUE@@ENABLE_SYMVERS_TRUE@version_arg = -Wl,--version-script=libstdc++-symbols.ver
@@ -454,7 +454,7 @@ libstdc___la_DEPENDENCIES = \
 	$(top_builddir)/libsupc++/libsupc++convenience.la
 
 libstdc___la_LDFLAGS = \
-	-avoid-version ${version_arg} -lm
+	-avoid-version ${version_arg} -lm 
 
 
 # Use special rules for the deprecated source files so that they find
@@ -574,6 +574,9 @@ clean-toolexeclibLTLIBRARIES:
 	  rm -f "$${dir}/so_locations"; \
 	done
 libstdc++.la: $(libstdc___la_OBJECTS) $(libstdc___la_DEPENDENCIES) 
+	$(CXXLINK) -rpath $(toolexeclibdir) $(libstdc___la_LDFLAGS) $(libstdc___la_OBJECTS) $(libstdc___la_LIBADD) $(LIBS)
+
+libgnustl_shared.la: $(libstdc___la_OBJECTS) $(libstdc___la_DEPENDENCIES) 
 	$(CXXLINK) -rpath $(toolexeclibdir) $(libstdc___la_LDFLAGS) $(libstdc___la_OBJECTS) $(libstdc___la_LIBADD) $(LIBS)
 
 mostlyclean-compile:

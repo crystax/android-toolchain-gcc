@@ -1,7 +1,7 @@
 /* Output variables, constants and external declarations, for GNU compiler.
    Copyright (C) 1987, 1988, 1989, 1992, 1993, 1994, 1995, 1996, 1997,
    1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
-   2010, 2011  Free Software Foundation, Inc.
+   2010, 2011, 2012  Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -30,6 +30,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "config.h"
 #include "system.h"
 #include "coretypes.h"
+#include "pointer-set.h"
 #include "tm.h"
 #include "rtl.h"
 #include "tree.h"
@@ -53,7 +54,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "basic-block.h"
 #include "tree-iterator.h"
 #include "pointer-set.h"
-#include "l-ipo.h"
 
 #ifdef XCOFF_DEBUGGING_INFO
 #include "xcoffout.h"		/* Needed for external data
@@ -1524,13 +1524,6 @@ notice_global_symbol (tree decl)
       || !MEM_P (DECL_RTL (decl)))
     return;
 
-  if (L_IPO_COMP_MODE
-      && ((TREE_CODE (decl) == FUNCTION_DECL
-           && cgraph_is_auxiliary (decl))
-          || (TREE_CODE (decl) == VAR_DECL
-              && varpool_is_auxiliary (varpool_node (decl)))))
-    return;
-
   /* We win when global object is found, but it is useful to know about weak
      symbol as well so we can produce nicer unique names.  */
   if (DECL_WEAK (decl) || DECL_ONE_ONLY (decl) || flag_shlib)
@@ -2105,6 +2098,19 @@ contains_pointers_p (tree type)
    it all the way to final.  See PR 17982 for further discussion.  */
 static GTY(()) tree pending_assemble_externals;
 
+/* FIXME: Trunk is at GCC 4.8 now and the above problem still hasn't been
+   addressed properly.  This caused PR 52640 due to O(external_decls**2)
+   lookups in the pending_assemble_externals TREE_LIST in assemble_external.
+   Paper over with this pointer set, which we use to see if we have already
+   added a decl to pending_assemble_externals without first traversing
+   the entire pending_assemble_externals list.  See assemble_external().  */
+static struct pointer_set_t *pending_assemble_externals_set;
+
+/* Some targets delay some output to final using TARGET_ASM_FILE_END.
+   As a result, assemble_external can be called after the list of externals
+   is processed and the pointer set destroyed.  */
+static bool pending_assemble_externals_processed;
+
 #ifdef ASM_OUTPUT_EXTERNAL
 /* True if DECL is a function decl for which no out-of-line copy exists.
    It is assumed that DECL's assembler name has been set.  */
@@ -2154,6 +2160,8 @@ process_pending_assemble_externals (void)
     assemble_external_real (TREE_VALUE (list));
 
   pending_assemble_externals = 0;
+  pending_assemble_externals_processed = true;
+  pointer_set_destroy (pending_assemble_externals_set);
 #endif
 }
 
@@ -2175,13 +2183,6 @@ assemble_external (tree decl ATTRIBUTE_UNUSED)
      open.  If it's not, we should not be calling this function.  */
   gcc_assert (asm_out_file);
 
-  /* Processing pending items from auxiliary modules are not supported
-     which means platforms that requires ASM_OUTPUT_EXTERNAL may 
-     have issues.  (TODO : one way is to flush the pending items from
-     auxiliary modules at the end of parsing the module)  */
-  if (L_IPO_IS_AUXILIARY_MODULE)
-    return;
-
   if (!DECL_P (decl) || !DECL_EXTERNAL (decl) || !TREE_PUBLIC (decl))
     return;
 
@@ -2201,7 +2202,13 @@ assemble_external (tree decl ATTRIBUTE_UNUSED)
     weak_decls = tree_cons (NULL, decl, weak_decls);
 
 #ifdef ASM_OUTPUT_EXTERNAL
-  if (value_member (decl, pending_assemble_externals) == NULL_TREE)
+  if (pending_assemble_externals_processed)
+    {
+      assemble_external_real (decl);
+      return;
+    }
+
+  if (! pointer_set_insert (pending_assemble_externals_set, decl))
     pending_assemble_externals = tree_cons (NULL, decl,
 					    pending_assemble_externals);
 #endif
@@ -2246,7 +2253,7 @@ mark_decl_referenced (tree decl)
 	 functions can be marked reachable, just use the external
 	 definition.  */
       struct cgraph_node *node = cgraph_node (decl);
-      if (!(DECL_EXTERNAL (decl) || cgraph_is_aux_decl_external (node))
+      if (!DECL_EXTERNAL (decl)
 	  && (!node->local.vtable_method || !cgraph_global_info_ready
 	      || !node->local.finalized))
 	cgraph_mark_needed_node (node);
@@ -3937,6 +3944,13 @@ compute_reloc_for_constant (tree exp)
 	   tem = TREE_OPERAND (tem, 0))
 	;
 
+      if (TREE_CODE (tem) == MEM_REF
+	  && TREE_CODE (TREE_OPERAND (tem, 0)) == ADDR_EXPR)
+	{
+	  reloc = compute_reloc_for_constant (TREE_OPERAND (tem, 0));
+	  break;
+	}
+
       if (TREE_PUBLIC (tem))
 	reloc |= 2;
       else
@@ -4005,6 +4019,9 @@ output_addressed_constants (tree exp)
 
       if (CONSTANT_CLASS_P (tem) || TREE_CODE (tem) == CONSTRUCTOR)
 	output_constant_def (tem, 0);
+
+      if (TREE_CODE (tem) == MEM_REF)
+	output_addressed_constants (TREE_OPERAND (tem, 0));
       break;
 
     case PLUS_EXPR:
@@ -5433,8 +5450,7 @@ find_decl_and_mark_needed (tree decl, tree target)
 
   if (fnode)
     {
-      if (!fnode->global.inlined_to)
-        cgraph_mark_needed_node (fnode);
+      cgraph_mark_needed_node (fnode);
       return fnode->decl;
     }
   else if (vnode)
@@ -5774,17 +5790,11 @@ finish_aliases_1 (void)
 	       && (! TREE_CODE (target_decl) == FUNCTION_DECL
 		   || ! DECL_VIRTUAL_P (target_decl))
 	       && ! lookup_attribute ("weakref", DECL_ATTRIBUTES (p->decl)))
-        {
-          /* In lightweight IPO, find the merged decl and check that
-	     it is defined.  */
-          tree real_target_decl = cgraph_find_decl (p->target);
-          if (!real_target_decl || DECL_EXTERNAL (real_target_decl))
-	    {
-	      error ("%q+D aliased to external symbol %qE",
-		     p->decl, p->target);
-	      p->emitted_diags |= ALIAS_DIAG_TO_EXTERN;
-	    }
-        }
+	{
+	  error ("%q+D aliased to external symbol %qE",
+		 p->decl, p->target);	  
+	  p->emitted_diags |= ALIAS_DIAG_TO_EXTERN;
+	}
     }
 
   symbol_alias_set_destroy (defined);
@@ -5814,9 +5824,6 @@ assemble_alias (tree decl, tree target)
 {
   tree target_decl;
   bool is_weakref = false;
-
-  if (L_IPO_IS_AUXILIARY_MODULE)
-      return;
 
   if (lookup_attribute ("weakref", DECL_ATTRIBUTES (decl)))
     {
@@ -6044,6 +6051,10 @@ init_varasm_once (void)
 
   if (readonly_data_section == NULL)
     readonly_data_section = text_section;
+
+#ifdef ASM_OUTPUT_EXTERNAL
+  pending_assemble_externals_set = pointer_set_create ();
+#endif
 }
 
 enum tls_model
@@ -6191,8 +6202,6 @@ default_elf_asm_named_section (const char *name, unsigned int flags,
 
   if (!(flags & SECTION_DEBUG))
     *f++ = 'a';
-  if (flags & SECTION_EXCLUDE)
-    *f++ = 'e';
   if (flags & SECTION_WRITE)
     *f++ = 'w';
   if (flags & SECTION_CODE)

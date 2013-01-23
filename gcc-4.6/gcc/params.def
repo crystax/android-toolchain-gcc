@@ -110,11 +110,6 @@ DEFPARAM (PARAM_MIN_INLINE_RECURSIVE_PROBABILITY,
 	  "Inline recursively only when the probability of call being executed exceeds the parameter",
 	  10, 0, 0)
 
-DEFPARAM (PARAM_INLINE_FUNCTION_OVERHEAD_SIZE,
-	  "inline-function-overhead-size",
-	  "Size estimate of function overhead (prologue/epilogue) for inlining purposes",
-	  7, 0, 0)
-
 /* Limit of iterations of early inliner.  This basically bounds number of
    nested indirect calls early inliner can resolve.  Deeper chains are still
    handled by late inlining.  */
@@ -304,57 +299,21 @@ DEFPARAM(PARAM_MAX_COMPLETELY_PEELED_INSNS,
 	"max-completely-peeled-insns",
 	"The maximum number of insns of a completely peeled loop",
 	400, 0, 0)
-/* The maximum number of insns of a peeled loop, when feedback
-   information is available.  */
-DEFPARAM(PARAM_MAX_COMPLETELY_PEELED_INSNS_FEEDBACK,
-	"max-completely-peeled-insns-feedback",
-	"The maximum number of insns of a completely peeled loop when profile "
-         "feedback is available",
-	600, 0, 0)
 /* The maximum number of peelings of a single loop that is peeled completely.  */
 DEFPARAM(PARAM_MAX_COMPLETELY_PEEL_TIMES,
 	"max-completely-peel-times",
 	"The maximum number of peelings of a single loop that is peeled completely",
-	8, 0, 0)
-/* The maximum number of peelings of a single loop that is peeled
-   completely, when feedback information is available.  */
-DEFPARAM(PARAM_MAX_COMPLETELY_PEEL_TIMES_FEEDBACK,
-	"max-completely-peel-times-feedback",
-	"The maximum number of peelings of a single loop that is peeled "
-         "completely, when profile feedback is available",
- 	16, 0, 0)
+	16, 0, 0)
 /* The maximum number of insns of a peeled loop that rolls only once.  */
 DEFPARAM(PARAM_MAX_ONCE_PEELED_INSNS,
 	"max-once-peeled-insns",
 	"The maximum number of insns of a peeled loop that rolls only once",
 	400, 0, 0)
-/* The maximum number of insns of a peeled loop that rolls only once,
-   when feedback information is available.  */
-DEFPARAM(PARAM_MAX_ONCE_PEELED_INSNS_FEEDBACK,
-	"max-once-peeled-insns-feedback",
-	"The maximum number of insns of a peeled loop that rolls only once, "
-         "when profile feedback is available",
-         600, 0, 0)
 /* The maximum depth of a loop nest we completely peel.  */
 DEFPARAM(PARAM_MAX_UNROLL_ITERATIONS,
 	 "max-completely-peel-loop-nest-depth",
 	 "The maximum depth of a loop nest we completely peel",
 	 8, 0, 0)
-/* The minimum profile count of basic blocks to look at when estimating
- * the code size footprint of the call graph in a dynamic IPA compile. */
-DEFPARAM(PARAM_CODESIZE_HOTNESS_THRESHOLD,
-	"codesize-hotness-threshold",
-	"Minimum profile count of basic blocks counted towards dynamic IPA "
-	"code size footprint estimate",
-	10000, 0, 0)
-/* The maximum code size estimate under which loop unrolling and peeling
- * is allowed in a dynamic IPA compile. This currently applies to loops with
- * non-constant iteration counts and no floating point computations. */
-DEFPARAM(PARAM_UNROLLPEEL_CODESIZE_THRESHOLD,
-	"unrollpeel-codesize-threshold",
-	"Maximum dynamic IPA code size footprint estimate for loop unrolling "
-	"and peeling",
-	10000, 0, 0)
 
 /* The maximum number of insns of an unswitched loop.  */
 DEFPARAM(PARAM_MAX_UNSWITCH_INSNS,
@@ -385,6 +344,11 @@ DEFPARAM(PARAM_SMS_MAX_II_FACTOR,
 	 "sms-max-ii-factor",
 	 "A factor for tuning the upper bound that swing modulo scheduler uses for scheduling a loop",
 	 100, 0, 0)
+/* The minimum value of stage count that swing modulo scheduler will generate.  */
+DEFPARAM(PARAM_SMS_MIN_SC,
+        "sms-min-sc",
+        "The minimum value of stage count that swing modulo scheduler will generate.",
+        2, 1, 1)
 DEFPARAM(PARAM_SMS_DFA_HISTORY,
 	 "sms-dfa-history",
 	 "The number of cycles the swing modulo scheduler considers when checking conflicts using DFA",
@@ -397,7 +361,7 @@ DEFPARAM(PARAM_SMS_LOOP_AVERAGE_COUNT_THRESHOLD,
 DEFPARAM(HOT_BB_COUNT_FRACTION,
 	 "hot-bb-count-fraction",
 	 "Select fraction of the maximal count of repetitions of basic block in program given basic block needs to have to be considered hot",
-	 40000, 0, 0)
+	 10000, 0, 0)
 DEFPARAM(HOT_BB_FREQUENCY_FRACTION,
 	 "hot-bb-frequency-fraction",
 	 "Select fraction of the maximal frequency of executions of basic block in function given basic block needs to have to be considered hot",
@@ -861,88 +825,6 @@ DEFPARAM (PARAM_LOOP_INVARIANT_MAX_BBS_IN_LOOP,
 	  "Max basic blocks number in loop for loop invariant motion",
 	  10000, 0, 0)
 
-/* Promote indirect call to conditional direct call only
-   when the percentage of the target count over the total
-   indirect call count is no smaller than the threshold.  */
-DEFPARAM (PARAM_ICALL_PROMOTE_PERCENT_THRESHOLD,
-	  "icall-promote-target-percent-threshold",
-	  "percentage threshold for direct call promotion"
-          " of a callee target",
-	  33, 0, 100)
-
-DEFPARAM (PARAM_ICALL_PROMOTE_COUNT_THRESHOLD,
-	  "icall-promote-target_count-threshold",
-	  "call count threshold for direct call promotion"
-          " of a callee target",
-	  1, 0, 0)
-
-/* 0: do not always inline icall target:
-   other value: always inline icall target when call count
-   exceeds this value.
-*/
-DEFPARAM (PARAM_ALWAYS_INLINE_ICALL_TARGET,
-	  "always-inline-icall-target",
-	  "force inline indirect call target when promoted",
-          0, 0, 0)
-
-/* Force the compiler to be in LIPO mode even there is no
- profile data available. -fripa is also needed. */
-DEFPARAM (PARAM_FORCE_LIPO_MODE, 
-	  "force-lipo",
-	  "force LIPO compilation mode",
-          0, 0, 1)
-
-/* Limit max module group size in LIPO mode.  When the value
- is set to 0 (which is the default), there is no limit.  */
-DEFPARAM (PARAM_MAX_LIPO_GROUP,
-	  "max-lipo-group",
-	  "maximum module group size.",
-          0, 0, 10000)
-
-/* In LIPO mode, stop processing any further auxiliary modules
-   if current memory consumption exceeds this limit (in kb).  */
-DEFPARAM (PARAM_MAX_LIPO_MEMORY,
-	  "max-lipo-mem",
-	  "don't import aux files if memory consumption exceeds this value",
-	  2400000, 0, 0)
-
-DEFPARAM (PARAM_PROFILE_GENERATE_SAMPLING_RATE,
-         "profile-generate-sampling-rate",
-         "sampling rate with -fprofile-generate-sampling",
-         100, 0, 2000000000)
-
-/* Used for debugging purpose. Tell the compiler to find
-   the gcda file in the current directory.  */
-DEFPARAM (PARAM_GCOV_DEBUG,
-	  "gcov-debug",
-	  "Looking for gcda file in current dir.",
-	  1, 0, 1)
-
-DEFPARAM (PARAM_REUSEDIST_MEAN_DIST_LARGE_THRESH,
-          "reusedist-mean-dist-large-thresh",
-          "Generate NTA stringops only if reusedist at least this size",
-          10000000, 0, 0)
-
-DEFPARAM (PARAM_REUSEDIST_MEAN_DIST_SMALL_THRESH,
-          "reusedist-mean-dist-small-thresh",
-          "Force temporal stringops if reusedist at most this size",
-          100000, 0, 0)
-
-DEFPARAM (PARAM_REUSEDIST_CALL_COUNT_THRESH,
-          "reusedist-call-count-thresh",
-          "Generate NTA stringops only if call count at least this large",
-          0, 0, 0)
-
-DEFPARAM (PARAM_REUSEDIST_MEMCPY_SIZE_THRESH,
-          "reusedist-memcpy-size-thresh",
-          "Generate memcpy-nta only if size at least this large",
-          4096, 0, 0)
-
-DEFPARAM (PARAM_REUSEDIST_MEMSET_SIZE_THRESH,
-          "reusedist-memset-size-thresh",
-          "Generate NTA memset only if size at least this large",
-          122880, 0, 0)
-
 /* Avoid SLP vectorization of large basic blocks.  */
 DEFPARAM (PARAM_SLP_MAX_INSNS_IN_BB,
           "slp-max-insns-in-bb",
@@ -998,12 +880,6 @@ DEFPARAM (MIN_PARTITION_SIZE,
 	  "Size of minimal paritition for WHOPR (in estimated instructions)",
 	  1000, 0, 0)
 
-DEFPARAM (PARAM_MIN_MCF_CANCEL_ITERS,
-	  "min-mcf-cancel-iters",
-	  "the minimum number of iterations of negative cycle cancellation "
-	  "in MCF",
-	  10, 1, 0)
-
 /* Diagnostic parameters.  */
 
 DEFPARAM (CXX_MAX_NAMESPACES_FOR_DIAGNOSTIC_HELP,
@@ -1012,35 +888,12 @@ DEFPARAM (CXX_MAX_NAMESPACES_FOR_DIAGNOSTIC_HELP,
 	  "name lookup fails",
 	  1000, 0, 0)
 
-DEFPARAM (PARAM_NUMBER_OF_MVERSN_CLONES,
-          "num-mversn-clones",
-	  "maximum number of functions to be cloned while doing "
-          "multiversioning",
-	  10, 0, 1000)
+/* Maximum number of conditional store pairs that can be sunk.  */
+DEFPARAM (PARAM_MAX_STORES_TO_SINK,
+          "max-stores-to-sink",
+          "Maximum number of conditional store pairs that can be sunk",
+          2, 0, 0)
 
-DEFPARAM (PARAM_MVERSN_CLONE_CGRAPH_DEPTH,
-          "mversn-clone-depth",
-	  "maximum length of the call graph path to be cloned "
-          "while doing multiversioning",
-	  2, 0, 5)
-
-/* Only output those call graph edges in .gnu.callgraph.text sections
-   whose count is greater than this value. */
-DEFPARAM (PARAM_NOTE_CGRAPH_SECTION_EDGE_THRESHOLD,
-	  "note-cgraph-section-edge-threshold",
-	  "minimum call graph edge count for inclusion in "
-          ".gnu.callgraph.text section",
-	  0, 0, 0)
-
-DEFPARAM (PARAM_PMU_PROFILE_N_ADDRESS,
-	  "pmu_profile_n_addresses",
-	  "While doing PMU profiling symbolize this many top addresses.",
-	  50, 1, 10000)
-
-DEFPARAM (PARAM_MAX_FUNCTION_SIZE_FOR_AUTO_CLONING,
-	  "autoclone-function-size-limit",
-	  "Do not auto clone functions beyond this size.",
-	  450, 0, 100000)
 
 /*
 Local variables:

@@ -158,6 +158,11 @@ struct stack_var
   /* The Variable.  */
   tree decl;
 
+  /* The offset of the variable.  During partitioning, this is the
+     offset relative to the partition.  After partitioning, this
+     is relative to the stack frame.  */
+  HOST_WIDE_INT offset;
+
   /* Initially, the size of the variable.  Later, the size of the partition,
      if this variable becomes it's partition's representative.  */
   HOST_WIDE_INT size;
@@ -262,6 +267,7 @@ add_stack_var (tree decl)
   v = &stack_vars[stack_vars_num];
 
   v->decl = decl;
+  v->offset = 0;
   v->size = tree_low_cst (DECL_SIZE_UNIT (SSAVAR (decl)), 1);
   /* Ensure that all variables have size, so that &a != &b for any two
      variables that are simultaneously live.  */
@@ -366,9 +372,8 @@ add_alias_set_conflicts (void)
 		 to elements will conflict.  In case of unions we have
 		 to be careful as type based aliasing rules may say
 		 access to the same memory does not conflict.  So play
-		 safe and add a conflict in this case when
-                 -fstrict-aliasing is used.  */
-              || (contains_union && flag_strict_aliasing))
+		 safe and add a conflict in this case.  */
+	      || contains_union)
 	    add_stack_var_conflict (i, j);
 	}
     }
@@ -398,9 +403,9 @@ stack_var_cmp (const void *a, const void *b)
     return (int)largeb - (int)largea;
 
   /* Secondary compare on size, decreasing  */
-  if (sizea > sizeb)
-    return -1;
   if (sizea < sizeb)
+    return -1;
+  if (sizea > sizeb)
     return 1;
 
   /* Tertiary compare on true alignment, decreasing.  */
@@ -559,19 +564,28 @@ update_alias_info_with_stack_vars (void)
 
 /* A subroutine of partition_stack_vars.  The UNION portion of a UNION/FIND
    partitioning algorithm.  Partitions A and B are known to be non-conflicting.
-   Merge them into a single partition A.  */
+   Merge them into a single partition A.
+
+   At the same time, add OFFSET to all variables in partition B.  At the end
+   of the partitioning process we've have a nice block easy to lay out within
+   the stack frame.  */
 
 static void
-union_stack_vars (size_t a, size_t b)
+union_stack_vars (size_t a, size_t b, HOST_WIDE_INT offset)
 {
+  size_t i, last;
   struct stack_var *vb = &stack_vars[b];
   bitmap_iterator bi;
   unsigned u;
 
-  gcc_assert (stack_vars[b].next == EOC);
-   /* Add B to A's partition.  */
-  stack_vars[b].next = stack_vars[a].next;
-  stack_vars[b].representative = a;
+  /* Update each element of partition B with the given offset,
+     and merge them into partition A.  */
+  for (last = i = b; i != EOC; last = i, i = stack_vars[i].next)
+    {
+      stack_vars[i].offset += offset;
+      stack_vars[i].representative = a;
+    }
+  stack_vars[last].next = stack_vars[a].next;
   stack_vars[a].next = b;
 
   /* Update the required alignment of partition A to account for B.  */
@@ -591,13 +605,16 @@ union_stack_vars (size_t a, size_t b)
    partitions constrained by the interference graph.  The overall
    algorithm used is as follows:
 
-	Sort the objects by size in descending order.
+	Sort the objects by size.
 	For each object A {
 	  S = size(A)
 	  O = 0
 	  loop {
 	    Look for the largest non-conflicting object B with size <= S.
 	    UNION (A, B)
+	    offset(B) = O
+	    O += size(B)
+	    S -= size(B)
 	  }
 	}
 */
@@ -619,21 +636,22 @@ partition_stack_vars (void)
   for (si = 0; si < n; ++si)
     {
       size_t i = stack_vars_sorted[si];
+      HOST_WIDE_INT isize = stack_vars[i].size;
       unsigned int ialign = stack_vars[i].alignb;
+      HOST_WIDE_INT offset = 0;
 
-      /* Ignore objects that aren't partition representatives. If we
-         see a var that is not a partition representative, it must
-         have been merged earlier.  */
-      if (stack_vars[i].representative != i)
-        continue;
-
-      for (sj = si + 1; sj < n; ++sj)
+      for (sj = si; sj-- > 0; )
 	{
 	  size_t j = stack_vars_sorted[sj];
+	  HOST_WIDE_INT jsize = stack_vars[j].size;
 	  unsigned int jalign = stack_vars[j].alignb;
 
 	  /* Ignore objects that aren't partition representatives.  */
 	  if (stack_vars[j].representative != j)
+	    continue;
+
+	  /* Ignore objects too large for the remaining space.  */
+	  if (isize < jsize)
 	    continue;
 
 	  /* Ignore conflicting objects.  */
@@ -646,8 +664,25 @@ partition_stack_vars (void)
 	      != (jalign * BITS_PER_UNIT <= MAX_SUPPORTED_STACK_ALIGNMENT))
 	    continue;
 
+	  /* Refine the remaining space check to include alignment.  */
+	  if (offset & (jalign - 1))
+	    {
+	      HOST_WIDE_INT toff = offset;
+	      toff += jalign - 1;
+	      toff &= -(HOST_WIDE_INT)jalign;
+	      if (isize - (toff - offset) < jsize)
+		continue;
+
+	      isize -= toff - offset;
+	      offset = toff;
+	    }
+
 	  /* UNION the objects, placing J at OFFSET.  */
-	  union_stack_vars (i, j);
+	  union_stack_vars (i, j, offset);
+
+	  isize -= jsize;
+	  if (isize == 0)
+	    break;
 	}
     }
 
@@ -677,8 +712,9 @@ dump_stack_var_partition (void)
 	{
 	  fputc ('\t', dump_file);
 	  print_generic_expr (dump_file, stack_vars[j].decl, dump_flags);
+	  fprintf (dump_file, ", offset " HOST_WIDE_INT_PRINT_DEC "\n",
+		   stack_vars[j].offset);
 	}
-      fputc ('\n', dump_file);
     }
 }
 
@@ -827,9 +863,10 @@ expand_stack_vars (bool (*pred) (tree))
 	 partition.  */
       for (j = i; j != EOC; j = stack_vars[j].next)
 	{
+	  gcc_assert (stack_vars[j].offset <= stack_vars[i].size);
 	  expand_one_stack_var_at (stack_vars[j].decl,
 				   base, base_align,
-				   offset);
+				   stack_vars[j].offset + offset);
 	}
     }
 
@@ -1348,39 +1385,15 @@ estimated_stack_frame_size (struct cgraph_node *node)
   return size;
 }
 
-/* Helper routine to check if a record or union contains an array field. */
-
-static int
-record_or_union_type_has_array_p (const_tree tree_type)
-{
-  tree fields = TYPE_FIELDS (tree_type);
-  tree f;
-
-  for (f = fields; f; f = DECL_CHAIN (f))
-    {
-      if (TREE_CODE (f) == FIELD_DECL)
-	{
-	  tree field_type = TREE_TYPE (f);
-	  if (RECORD_OR_UNION_TYPE_P (field_type))
-	    return record_or_union_type_has_array_p (field_type);
-	  if (TREE_CODE (field_type) == ARRAY_TYPE)
-	    return 1;
-	}
-    }
-  return 0;
-}
-
 /* Expand all variables used in the function.  */
 
 static void
 expand_used_vars (void)
 {
   tree var, outer_block = DECL_INITIAL (current_function_decl);
-  referenced_var_iterator rvi;
   VEC(tree,heap) *maybe_local_decls = NULL;
   unsigned i;
   unsigned len;
-  int gen_stack_protect_signal = 0;
 
   /* Compute the phase of the stack frame for this function.  */
   {
@@ -1412,23 +1425,6 @@ expand_used_vars (void)
 	    }
 	}
     }
-
-  FOR_EACH_REFERENCED_VAR (cfun, var, rvi)
-    if (!is_global_var (var))
-      {
-	tree var_type = TREE_TYPE (var);
-	/* Examine local referenced variables that have their addresses taken,
-	   contain an array, or are arrays.  */
-	if (TREE_CODE (var) == VAR_DECL
-	    && (TREE_CODE (var_type) == ARRAY_TYPE
-		|| TREE_ADDRESSABLE (var)
-		|| (RECORD_OR_UNION_TYPE_P (var_type)
-		    && record_or_union_type_has_array_p (var_type))))
-	  {
-	    ++gen_stack_protect_signal;
-	    break;
-	  }
-      }
 
   /* At this point all variables on the local_decls with TREE_USED
      set are not associated with any block scope.  Lay them out.  */
@@ -1519,18 +1515,11 @@ expand_used_vars (void)
 	dump_stack_var_partition ();
     }
 
-  /* Create stack guard, if
-     a) "-fstack-protector-all" - always;
-     b) "-fstack-protector-strong" - if there are arrays, memory
-     references to local variables, alloca used, or protected decls present;
-     c) "-fstack-protector" - if alloca used, or protected decls present  */
-  if (flag_stack_protect == 3  /* -fstack-protector-all  */
-      || (flag_stack_protect == 2  /* -fstack-protector-strong  */
-	  && (gen_stack_protect_signal || cfun->calls_alloca
-	      || has_protected_decls))
-      || (flag_stack_protect == 1  /* -fstack-protector  */
-	  && (cfun->calls_alloca
-	      || has_protected_decls)))
+  /* There are several conditions under which we should create a
+     stack guard: protect-all, alloca used, protected decls present.  */
+  if (flag_stack_protect == 2
+      || (flag_stack_protect
+	  && (cfun->calls_alloca || has_protected_decls)))
     create_stack_guard ();
 
   /* Assign rtl to each variable based on these partitions.  */
@@ -1854,11 +1843,16 @@ expand_gimple_cond (basic_block bb, gimple stmt)
 static void
 expand_call_stmt (gimple stmt)
 {
-  tree exp;
-  tree lhs = gimple_call_lhs (stmt);
+  tree exp, lhs;
   size_t i;
   bool builtin_p;
   tree decl;
+
+  if (gimple_call_internal_p (stmt))
+    {
+      expand_internal_call (stmt);
+      return;
+    }
 
   exp = build_vl_exp (CALL_EXPR, gimple_call_num_args (stmt) + 3);
 
@@ -1897,6 +1891,7 @@ expand_call_stmt (gimple stmt)
   SET_EXPR_LOCATION (exp, gimple_location (stmt));
   TREE_BLOCK (exp) = gimple_block (stmt);
 
+  lhs = gimple_call_lhs (stmt);
   if (lhs)
     expand_assignment (lhs, exp, false);
   else
@@ -3220,6 +3215,8 @@ expand_debug_expr (tree exp)
     case VEC_UNPACK_LO_EXPR:
     case VEC_WIDEN_MULT_HI_EXPR:
     case VEC_WIDEN_MULT_LO_EXPR:
+    case VEC_WIDEN_LSHIFT_HI_EXPR:
+    case VEC_WIDEN_LSHIFT_LO_EXPR:
       return NULL;
 
    /* Misc codes.  */

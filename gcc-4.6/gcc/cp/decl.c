@@ -53,7 +53,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "timevar.h"
 #include "pointer-set.h"
 #include "splay-tree.h"
-#include "cgraph.h"
 #include "plugin.h"
 
 /* Possible cases of bad specifiers type used by bad_specifiers. */
@@ -553,7 +552,7 @@ poplevel (int keep, int reverse, int functionbody)
   unsigned ix;
   cp_label_binding *label_bind;
 
-  timevar_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
  restart:
 
   block = NULL_TREE;
@@ -816,8 +815,7 @@ poplevel (int keep, int reverse, int functionbody)
   if (kind == sk_cleanup)
     goto restart;
 
-  timevar_stop (TV_NAME_LOOKUP);
-  return block;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, block);
 }
 
 /* Walk all the namespaces contained NAMESPACE, including NAMESPACE
@@ -851,7 +849,7 @@ walk_namespaces (walk_namespaces_fn f, void* data)
    wrapup_global_declarations for this NAMESPACE.  */
 
 int
-wrapup_globals_for_namespace (tree name_space, void *data)
+wrapup_globals_for_namespace (tree name_space, void* data)
 {
   struct cp_binding_level *level = NAMESPACE_LEVEL (name_space);
   VEC(tree,gc) *statics = level->static_decls;
@@ -901,7 +899,7 @@ push_local_name (tree decl)
   size_t i, nelts;
   tree t, name;
 
-  timevar_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
 
   name = DECL_NAME (decl);
 
@@ -920,13 +918,13 @@ push_local_name (tree decl)
 	    DECL_DISCRIMINATOR (decl) = 1;
 
 	  VEC_replace (tree, local_names, i, decl);
-	  timevar_stop (TV_NAME_LOOKUP);
+	  timevar_pop (TV_NAME_LOOKUP);
 	  return;
 	}
     }
 
   VEC_safe_push (tree, gc, local_names, decl);
-  timevar_stop (TV_NAME_LOOKUP);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Subroutine of duplicate_decls: return truthvalue of whether
@@ -2286,26 +2284,7 @@ duplicate_decls (tree newdecl, tree olddecl, bool newdecl_is_friend)
   /* The NEWDECL will no longer be needed.  Because every out-of-class
      declaration of a member results in a call to duplicate_decls,
      freeing these nodes represents in a significant savings.  */
-  {
-    tree clone;
-    bool found_clone = false;
-    /* Fix dangling reference.  */
-    FOR_EACH_CLONE (clone, newdecl)
-      {
-        if (DECL_CLONED_FUNCTION (clone) == newdecl)
-          {
-            found_clone = true;
-            break;
-          }
-        if (DECL_ABSTRACT_ORIGIN (clone) == newdecl)
-          {
-            found_clone = true;
-            break;
-          }
-      }
-    if (!found_clone)
-      ggc_free (newdecl);
-  }
+  ggc_free (newdecl);
 
   return olddecl;
 }
@@ -2548,37 +2527,26 @@ make_label_decl (tree id, int local_p)
    be found, create one.  (We keep track of used, but undefined,
    labels, and complain about them at the end of a function.)  */
 
-static tree
-lookup_label_1 (tree id)
+tree
+lookup_label (tree id)
 {
   tree decl;
 
+  timevar_push (TV_NAME_LOOKUP);
   /* You can't use labels at global scope.  */
   if (current_function_decl == NULL_TREE)
     {
       error ("label %qE referenced outside of any function", id);
-      return NULL_TREE;
+      POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, NULL_TREE);
     }
 
   /* See if we've already got this label.  */
   decl = IDENTIFIER_LABEL_VALUE (id);
   if (decl != NULL_TREE && DECL_CONTEXT (decl) == current_function_decl)
-    return decl;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 
   decl = make_label_decl (id, /*local_p=*/0);
-  return decl;
-}
-
-/* Wrapper for lookup_label_1.  */
-
-tree
-lookup_label (tree id)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_label_1 (id);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 }
 
 /* Declare a local label named ID.  */
@@ -2853,12 +2821,14 @@ check_omp_return (void)
 /* Define a label, specifying the location in the source file.
    Return the LABEL_DECL node for the label.  */
 
-static tree
-define_label_1 (location_t location, tree name)
+tree
+define_label (location_t location, tree name)
 {
   struct named_label_entry *ent, dummy;
   struct cp_binding_level *p;
   tree decl;
+
+  timevar_push (TV_NAME_LOOKUP);
 
   decl = lookup_label (name);
 
@@ -2879,7 +2849,7 @@ define_label_1 (location_t location, tree name)
   if (DECL_INITIAL (decl) != NULL_TREE)
     {
       error ("duplicate label %qD", decl);
-      return error_mark_node;
+      POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
     }
   else
     {
@@ -2898,21 +2868,8 @@ define_label_1 (location_t location, tree name)
       ent->uses = NULL;
     }
 
-  return decl;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 }
-
-/* Wrapper for define_label_1.  */
-
-tree
-define_label (location_t location, tree name)
-{
-  tree ret;
-  timevar_start (TV_NAME_LOOKUP);
-  ret = define_label_1 (location, name);
-  timevar_stop (TV_NAME_LOOKUP);
-  return ret;
-}
-
 
 struct cp_switch
 {
@@ -3524,7 +3481,6 @@ cxx_init_decl_processing (void)
 {
   tree void_ftype;
   tree void_ftype_ptr;
-  tree void_ftype_ptr_sizetype;
 
   build_common_tree_nodes (flag_signed_char);
 
@@ -3590,14 +3546,8 @@ cxx_init_decl_processing (void)
   void_ftype = build_function_type_list (void_type_node, NULL_TREE);
   void_ftype_ptr = build_function_type_list (void_type_node,
 					     ptr_type_node, NULL_TREE);
-  void_ftype_ptr_sizetype = build_function_type_list (void_type_node,
-                                                      ptr_type_node,
-                                                      size_type_node,
-                                                      NULL_TREE);
   void_ftype_ptr
     = build_exception_variant (void_ftype_ptr, empty_except_spec);
-  void_ftype_ptr_sizetype
-    = build_exception_variant (void_ftype_ptr_sizetype, empty_except_spec);
 
   /* C++ extensions */
 
@@ -3647,7 +3597,7 @@ cxx_init_decl_processing (void)
   current_lang_name = lang_name_cplusplus;
 
   {
-    tree newtype, deltype, deltype2;
+    tree newtype, deltype;
     tree ptr_ftype_sizetype;
     tree new_eh_spec;
 
@@ -3676,10 +3626,8 @@ cxx_init_decl_processing (void)
 
     newtype = build_exception_variant (ptr_ftype_sizetype, new_eh_spec);
     deltype = build_exception_variant (void_ftype_ptr, empty_except_spec);
-    deltype2 = build_exception_variant (void_ftype_ptr_sizetype, empty_except_spec);
     push_cp_library_fn (NEW_EXPR, newtype);
     push_cp_library_fn (VEC_NEW_EXPR, newtype);
-    push_cp_library_fn (DELETE_EXPR, deltype2);
     global_delete_fndecl = push_cp_library_fn (DELETE_EXPR, deltype);
     push_cp_library_fn (VEC_DELETE_EXPR, deltype);
 
@@ -3688,7 +3636,7 @@ cxx_init_decl_processing (void)
     TYPE_SIZE_UNIT (nullptr_type_node) = size_int (GET_MODE_SIZE (ptr_mode));
     TYPE_UNSIGNED (nullptr_type_node) = 1;
     TYPE_PRECISION (nullptr_type_node) = GET_MODE_BITSIZE (ptr_mode);
-    SET_TYPE_MODE (nullptr_type_node, Pmode);
+    SET_TYPE_MODE (nullptr_type_node, ptr_mode);
     record_builtin_type (RID_MAX, "decltype(nullptr)", nullptr_type_node);
     nullptr_node = build_int_cst (nullptr_type_node, 0);
   }
@@ -5626,10 +5574,6 @@ make_rtl_for_nonlocal_decl (tree decl, tree init, const char* asmspec)
 	   && DECL_IMPLICIT_INSTANTIATION (decl))
     defer_p = 1;
 
-  /* Capture the current module info.  */
-  if (L_IPO_COMP_MODE)
-    varpool_node (decl);
-
   /* If we're not deferring, go ahead and assemble the variable.  */
   if (!defer_p)
     rest_of_decl_compilation (decl, toplev, at_eof);
@@ -7522,18 +7466,8 @@ check_static_variable_definition (tree decl, tree type)
   else if (cxx_dialect >= cxx0x && !INTEGRAL_OR_ENUMERATION_TYPE_P (type))
     {
       if (literal_type_p (type))
-        {
-          /* FIXME google: This local modification allows us to
-             transition from C++98 to C++11 without moving static
-             const floats out of the class during the transition.  It
-             should not be forward-ported to a 4.7 branch, since by
-             then we should be able to just fix the code to use
-             constexpr.  */
-          pedwarn (input_location, OPT_pedantic,
-                   "%<constexpr%> needed for in-class initialization of "
-                   "static data member %q#D of non-integral type", decl);
-          return 0;
-        }
+	error ("%<constexpr%> needed for in-class initialization of static "
+	       "data member %q#D of non-integral type", decl);
       else
 	error ("in-class initialization of static data member %q#D of "
 	       "non-literal type", decl);
@@ -11245,13 +11179,15 @@ lookup_and_check_tag (enum tag_types tag_code, tree name,
    TEMPLATE_HEADER_P is true when this declaration is preceded by
    a set of template parameters.  */
 
-static tree
-xref_tag_1 (enum tag_types tag_code, tree name,
-            tag_scope scope, bool template_header_p)
+tree
+xref_tag (enum tag_types tag_code, tree name,
+	  tag_scope scope, bool template_header_p)
 {
   enum tree_code code;
   tree t;
   tree context = NULL_TREE;
+
+  timevar_push (TV_NAME_LOOKUP);
 
   gcc_assert (TREE_CODE (name) == IDENTIFIER_NODE);
 
@@ -11280,7 +11216,7 @@ xref_tag_1 (enum tag_types tag_code, tree name,
 			       scope, template_header_p);
 
   if (t == error_mark_node)
-    return error_mark_node;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 
   if (scope != ts_current && t && current_class_type
       && template_class_depth (current_class_type)
@@ -11335,7 +11271,7 @@ xref_tag_1 (enum tag_types tag_code, tree name,
       if (code == ENUMERAL_TYPE)
 	{
 	  error ("use of enum %q#D without previous declaration", name);
-	  return error_mark_node;
+	  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 	}
       else
 	{
@@ -11349,7 +11285,7 @@ xref_tag_1 (enum tag_types tag_code, tree name,
       if (template_header_p && MAYBE_CLASS_TYPE_P (t))
         {
 	  if (!redeclare_class_template (t, current_template_parms))
-            return error_mark_node;
+            POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
         }
       else if (!processing_template_decl
 	       && CLASS_TYPE_P (t)
@@ -11357,7 +11293,7 @@ xref_tag_1 (enum tag_types tag_code, tree name,
 	{
 	  error ("redeclaration of %qT as a non-template", t);
 	  error ("previous declaration %q+D", t);
-	  return error_mark_node;
+	  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 	}
 
       /* Make injected friend class visible.  */
@@ -11375,23 +11311,8 @@ xref_tag_1 (enum tag_types tag_code, tree name,
 	}
     }
 
-  return t;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 }
-
-/* Wrapper for xref_tag_1.  */
-
-tree
-xref_tag (enum tag_types tag_code, tree name,
-          tag_scope scope, bool template_header_p)
-{
-  tree ret;
-  bool subtime;
-  subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = xref_tag_1 (tag_code, name, scope, template_header_p);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
-}
-
 
 tree
 xref_tag_from_type (tree old, tree id, tag_scope scope)

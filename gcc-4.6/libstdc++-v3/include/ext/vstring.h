@@ -37,21 +37,6 @@
 #include <ext/rc_string_base.h>
 #include <ext/sso_string_base.h>
 
-#if __google_stl_debug_string && !defined(_GLIBCXX_DEBUG)
-# undef _GLIBCXX_DEBUG_ASSERT
-# undef _GLIBCXX_DEBUG_PEDASSERT
-// Perform additional checks (but only in this file).
-# define _GLIBCXX_DEBUG_ASSERT(_Condition)                             \
-  if (! (_Condition)) {                                                \
-    char buf[512];                                                     \
-    __builtin_snprintf(buf, sizeof(buf),                               \
-                      "%s:%d: %s: Assertion '%s' failed.\n",           \
-                      __FILE__, __LINE__, __func__, # _Condition);     \
-    std::__throw_runtime_error(buf);                                   \
-  }
-# define _GLIBCXX_DEBUG_PEDASSERT(_Condition) _GLIBCXX_DEBUG_ASSERT(_Condition)
-#endif
-
 namespace __gnu_cxx _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
@@ -2760,7 +2745,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     : public __hash_base<size_t, __gnu_cxx::__vstring>
     {
       size_t
-      operator()(const __gnu_cxx::__vstring& __s) const noexcept
+      operator()(const __gnu_cxx::__vstring& __s) const
       { return std::_Hash_impl::hash(__s.data(), __s.length()); }
     };
 
@@ -2771,7 +2756,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     : public __hash_base<size_t, __gnu_cxx::__wvstring>
     {
       size_t
-      operator()(const __gnu_cxx::__wvstring& __s) const noexcept
+      operator()(const __gnu_cxx::__wvstring& __s) const
       { return std::_Hash_impl::hash(__s.data(),
                                      __s.length() * sizeof(wchar_t)); }
     };
@@ -2784,7 +2769,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     : public __hash_base<size_t, __gnu_cxx::__u16vstring>
     {
       size_t
-      operator()(const __gnu_cxx::__u16vstring& __s) const noexcept
+      operator()(const __gnu_cxx::__u16vstring& __s) const
       { return std::_Hash_impl::hash(__s.data(),
                                      __s.length() * sizeof(char16_t)); }
     };
@@ -2795,7 +2780,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     : public __hash_base<size_t, __gnu_cxx::__u32vstring>
     {
       size_t
-      operator()(const __gnu_cxx::__u32vstring& __s) const noexcept
+      operator()(const __gnu_cxx::__u32vstring& __s) const
       { return std::_Hash_impl::hash(__s.data(),
                                      __s.length() * sizeof(char32_t)); }
     };
@@ -2807,13 +2792,5 @@ _GLIBCXX_END_NAMESPACE_VERSION
 #endif /* __GXX_EXPERIMENTAL_CXX0X__ */
 
 #include "vstring.tcc" 
-
-#if __google_stl_debug_string && !defined(_GLIBCXX_DEBUG)
-// Undo our defines, so they don't affect anything else.
-# undef _GLIBCXX_DEBUG_ASSERT
-# undef _GLIBCXX_DEBUG_PEDASSERT
-# define _GLIBCXX_DEBUG_ASSERT(_Condition)
-# define _GLIBCXX_DEBUG_PEDASSERT(_Condition)
-#endif
 
 #endif /* _VSTRING_H */

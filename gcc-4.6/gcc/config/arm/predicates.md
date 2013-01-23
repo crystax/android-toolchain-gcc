@@ -136,6 +136,11 @@
 	    (match_operand 0 "s_register_operand"))
        (match_operand 0 "const_int_operand")))
 
+(define_predicate "const_neon_scalar_shift_amount_operand"
+  (and (match_code "const_int")
+       (match_test "((unsigned HOST_WIDE_INT) INTVAL (op)) <= GET_MODE_BITSIZE (mode)
+	&& ((unsigned HOST_WIDE_INT) INTVAL (op)) > 0")))
+
 (define_predicate "arm_add_operand"
   (ior (match_operand 0 "arm_rhs_operand")
        (match_operand 0 "arm_neg_immediate_operand")))
@@ -236,6 +241,15 @@
 			      || ((unsigned HOST_WIDE_INT) INTVAL (XEXP (op, 1))) < 32")))
        (match_test "mode == GET_MODE (op)")))
 
+;; True for shift operators which can be used with saturation instructions.
+(define_special_predicate "sat_shift_operator"
+  (and (ior (and (match_code "mult")
+                 (match_test "power_of_two_operand (XEXP (op, 1), mode)"))
+            (and (match_code "ashift,ashiftrt")
+                 (match_test "GET_CODE (XEXP (op, 1)) == CONST_INT
+                             && ((unsigned HOST_WIDE_INT) INTVAL (XEXP (op, 1)) < 32)")))
+       (match_test "mode == GET_MODE (op)")))
+
 ;; True for MULT, to identify which variant of shift_operator is in use.
 (define_special_predicate "mult_operator"
   (match_code "mult"))
@@ -250,11 +264,15 @@
 
 ;; True for integer comparisons and, if FP is active, for comparisons
 ;; other than LTGT or UNEQ.
+(define_special_predicate "expandable_comparison_operator"
+  (match_code "eq,ne,le,lt,ge,gt,geu,gtu,leu,ltu,
+	       unordered,ordered,unlt,unle,unge,ungt"))
+
+;; Likewise, but only accept comparisons that are directly supported
+;; by ARM condition codes.
 (define_special_predicate "arm_comparison_operator"
-  (ior (match_code "eq,ne,le,lt,ge,gt,geu,gtu,leu,ltu")
-       (and (match_test "TARGET_32BIT && TARGET_HARD_FLOAT
-			 && (TARGET_FPA || TARGET_VFP)")
-            (match_code "unordered,ordered,unlt,unle,unge,ungt"))))
+  (and (match_operand 0 "expandable_comparison_operator")
+       (match_test "maybe_get_arm_condition_code (op) != ARM_NV")))
 
 (define_special_predicate "lt_ge_comparison_operator"
   (match_code "lt,ge"))
@@ -597,6 +615,26 @@
   return neon_immediate_valid_for_move (op, mode, NULL, NULL);
 })
 
+(define_predicate "imm_for_neon_lshift_operand"
+  (match_code "const_vector")
+{
+  return neon_immediate_valid_for_shift (op, mode, NULL, NULL, true);
+})
+
+(define_predicate "imm_for_neon_rshift_operand"
+  (match_code "const_vector")
+{
+  return neon_immediate_valid_for_shift (op, mode, NULL, NULL, false);
+})
+
+(define_predicate "imm_lshift_or_reg_neon"
+  (ior (match_operand 0 "s_register_operand")
+       (match_operand 0 "imm_for_neon_lshift_operand")))
+
+(define_predicate "imm_rshift_or_reg_neon"
+  (ior (match_operand 0 "s_register_operand")
+       (match_operand 0 "imm_for_neon_rshift_operand")))
+
 (define_predicate "imm_for_neon_logic_operand"
   (match_code "const_vector")
 {
@@ -695,6 +733,15 @@
    } 
   return true; 
 })
+
+(define_predicate "const_double_vcvt_power_of_two_reciprocal"
+  (and (match_code "const_double")
+       (match_test "TARGET_32BIT && TARGET_VFP 
+       		    && vfp3_const_double_for_fract_bits (op)")))
+
+(define_special_predicate "neon_struct_operand"
+  (and (match_code "mem")
+       (match_test "TARGET_32BIT && neon_vector_mem_operand (op, 2)")))
 
 (define_special_predicate "add_operator"
 			 (match_code "plus"))

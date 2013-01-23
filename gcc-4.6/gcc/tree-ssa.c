@@ -43,7 +43,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-dump.h"
 #include "tree-pass.h"
 #include "diagnostic-core.h"
-#include "l-ipo.h"
 #include "cfgloop.h"
 
 /* Pointer map of variable mappings, keyed by edge.  */
@@ -1485,9 +1484,7 @@ useless_type_conversion_p (tree outer_type, tree inner_type)
      compared types.  */
   else if (AGGREGATE_TYPE_P (inner_type)
 	   && TREE_CODE (inner_type) == TREE_CODE (outer_type))
-    return (L_IPO_COMP_MODE
-	    && (equivalent_struct_types_for_tbaa (inner_type,
-						  outer_type) == 1));
+    return false;
 
   return false;
 }
@@ -1661,11 +1658,10 @@ walk_use_def_chains (tree var, walk_use_def_chains_fn fn, void *data,
    changed conditionally uninitialized to unconditionally uninitialized.  */
 
 /* Emit a warning for T, an SSA_NAME, being uninitialized.  The exact
-   warning text is in MSGID and LOCUS may contain a location or be null.
-   WC is the warning code.  */
+   warning text is in MSGID and LOCUS may contain a location or be null.  */
 
 void
-warn_uninit (enum opt_code wc, tree t, const char *gmsgid, void *data)
+warn_uninit (tree t, const char *gmsgid, void *data)
 {
   tree var = SSA_NAME_VAR (t);
   gimple context = (gimple) data;
@@ -1689,7 +1685,7 @@ warn_uninit (enum opt_code wc, tree t, const char *gmsgid, void *data)
 	     : DECL_SOURCE_LOCATION (var);
   xloc = expand_location (location);
   floc = expand_location (DECL_SOURCE_LOCATION (cfun->decl));
-  if (warning_at (location, wc, gmsgid, var))
+  if (warning_at (location, OPT_Wuninitialized, gmsgid, var))
     {
       TREE_NO_WARNING (var) = 1;
 
@@ -1771,12 +1767,10 @@ warn_uninitialized_var (tree *tp, int *walk_subtrees, void *data_)
       /* We only do data flow with SSA_NAMEs, so that's all we
 	 can warn about.  */
       if (data->always_executed)
-        warn_uninit (OPT_Wuninitialized,
-	             t, "%qD is used uninitialized in this function",
+        warn_uninit (t, "%qD is used uninitialized in this function",
 		     data->stmt);
       else if (data->warn_possibly_uninitialized)
-        warn_uninit (OPT_Wuninitialized,
-	             t, "%qD may be used uninitialized in this function",
+        warn_uninit (t, "%qD may be used uninitialized in this function",
 		     data->stmt);
       *walk_subtrees = 0;
       break;

@@ -1108,6 +1108,8 @@ make it all fit in fewer cache lines.
 If the value of this macro has a type, it should be an unsigned type.
 @end defmac
 
+@hook TARGET_VECTOR_ALIGNMENT
+
 @defmac STACK_SLOT_ALIGNMENT (@var{type}, @var{mode}, @var{basic-align})
 If defined, a C expression to compute the alignment for stack slot.
 @var{type} is the data type, @var{mode} is the widest mode available,
@@ -2521,7 +2523,7 @@ instruction for loading an immediate value into a floating-point
 register, so @code{TARGET_PREFERRED_RELOAD_CLASS} returns @code{NO_REGS} when
 @var{x} is a floating-point constant.  If the constant can't be loaded
 into any kind of register, code generation will be better if
-@code{LEGITIMATE_CONSTANT_P} makes the constant illegitimate instead
+@code{TARGET_LEGITIMATE_CONSTANT_P} makes the constant illegitimate instead
 of using @code{TARGET_PREFERRED_RELOAD_CLASS}.
 
 If an insn has pseudos in it after register allocation, reload will go
@@ -2558,8 +2560,8 @@ instruction for loading an immediate value into a floating-point
 register, so @code{PREFERRED_RELOAD_CLASS} returns @code{NO_REGS} when
 @var{x} is a floating-point constant.  If the constant can't be loaded
 into any kind of register, code generation will be better if
-@code{LEGITIMATE_CONSTANT_P} makes the constant illegitimate instead
-of using @code{PREFERRED_RELOAD_CLASS}.
+@code{TARGET_LEGITIMATE_CONSTANT_P} makes the constant illegitimate instead
+of using @code{TARGET_PREFERRED_RELOAD_CLASS}.
 
 If an insn has pseudos in it after register allocation, reload will go
 through the alternatives and call repeatedly @code{PREFERRED_RELOAD_CLASS}
@@ -4305,6 +4307,8 @@ insns involving vector mode @var{mode}.  At the very least, it
 must have move patterns for this mode.
 @end deftypefn
 
+@hook TARGET_ARRAY_MODE_SUPPORTED_P
+
 @hook TARGET_SMALL_REGISTER_CLASSES_FOR_MODE_P
 Define this to return nonzero for machine modes for which the port has
 small register classes.  If this target hook returns nonzero for a given
@@ -5555,13 +5559,13 @@ These are obsolete macros, replaced by the
 @code{TARGET_MODE_DEPENDENT_ADDRESS_P} target hook.
 @end defmac
 
-@defmac LEGITIMATE_CONSTANT_P (@var{x})
-A C expression that is nonzero if @var{x} is a legitimate constant for
-an immediate operand on the target machine.  You can assume that
-@var{x} satisfies @code{CONSTANT_P}, so you need not check this.  In fact,
-@samp{1} is a suitable definition for this macro on machines where
-anything @code{CONSTANT_P} is valid.
-@end defmac
+@hook TARGET_LEGITIMATE_CONSTANT_P
+This hook returns true if @var{x} is a legitimate constant for a
+@var{mode}-mode immediate operand on the target machine.  You can assume that
+@var{x} satisfies @code{CONSTANT_P}, so you need not check this.
+
+The default definition returns true.
+@end deftypefn
 
 @hook TARGET_DELEGITIMIZE_ADDRESS
 This hook is used to undo the possibly obfuscating effects of the
@@ -10871,16 +10875,6 @@ built-in function.  @var{n_args} is the number of arguments passed to
 the function; the arguments themselves are pointed to by @var{argp}.
 The result is another tree containing a simplified expression for the
 call's result.  If @var{ignore} is true the value will be ignored.
-@end deftypefn
-
-@hook TARGET_MVERSION_FUNCTION
-Check if a function needs to be multi-versioned to support variants of
-this architecture.  @var{fndecl} is the declaration of the function.
-@end deftypefn
-
-@hook TARGET_SLOW_UNALIGNED_VECTOR_MEMOP
-Return true if unaligned vector memory load/store is a slow operation
-on this target.
 @end deftypefn
 
 @hook TARGET_INVALID_WITHIN_DOLOOP

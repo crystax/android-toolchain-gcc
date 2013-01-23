@@ -97,9 +97,6 @@ struct lim_aux_data
 				   MAX_LOOP loop.  */
 };
 
-/* limit for lsm that can be performed for one loop.  */
-static unsigned maximum_lsm;
-
 /* Maps statements to their lim_aux_data.  */
 
 static struct pointer_map_t *lim_aux_data_map;
@@ -1837,33 +1834,6 @@ analyze_memory_references (void)
   create_vop_ref_mapping ();
 }
 
-/* Returns true if a region of size SIZE1 at position 0 and a region of
-   size SIZE2 at position DIFF cannot overlap.  */
-
-static bool
-cannot_overlap_p (aff_tree *diff, double_int size1, double_int size2)
-{
-  double_int d, bound;
-
-  /* Unless the difference is a constant, we fail.  */
-  if (diff->n != 0)
-    return false;
-
-  d = diff->offset;
-  if (double_int_negative_p (d))
-    {
-      /* The second object is before the first one, we succeed if the last
-	 element of the second object is before the start of the first one.  */
-      bound = double_int_add (d, double_int_add (size2, double_int_minus_one));
-      return double_int_negative_p (bound);
-    }
-  else
-    {
-      /* We succeed if the second object starts after the first one ends.  */
-      return double_int_scmp (size1, d) <= 0;
-    }
-}
-
 /* Returns true if MEM1 and MEM2 may alias.  TTAE_CACHE is used as a cache in
    tree_to_aff_combination_expand.  */
 
@@ -1892,7 +1862,7 @@ mem_refs_may_alias_p (tree mem1, tree mem2, struct pointer_map_t **ttae_cache)
   aff_combination_scale (&off1, double_int_minus_one);
   aff_combination_add (&off2, &off1);
 
-  if (cannot_overlap_p (&off2, size1, size2))
+  if (aff_comb_cannot_overlap_p (&off2, size1, size2))
     return false;
 
   return true;
@@ -2362,16 +2332,12 @@ find_refs_for_sm (struct loop *loop, bitmap sm_executed, bitmap refs_to_sm)
   unsigned i;
   bitmap_iterator bi;
   mem_ref_p ref;
-  unsigned sm_count = 0;
 
   EXECUTE_IF_AND_COMPL_IN_BITMAP (refs, sm_executed, 0, i, bi)
     {
       ref = VEC_index (mem_ref_p, memory_accesses.refs_list, i);
-      if (sm_count < maximum_lsm && can_sm_ref_p (loop, ref))
-        {
-          bitmap_set_bit (refs_to_sm, i);
-          ++sm_count;
-        }
+      if (can_sm_ref_p (loop, ref))
+	bitmap_set_bit (refs_to_sm, i);
     }
 }
 
@@ -2531,10 +2497,6 @@ tree_ssa_lim_initialize (void)
   sbitmap_free (contains_call);
 
   lim_aux_data_map = pointer_map_create ();
-
-  /* Supress execeesive store-motion. Minus target_avail_regs by 1
-     for the induction varialbe. Maybe we should use even less?  */
-  maximum_lsm = (target_avail_regs < 1 ? 0 : target_avail_regs - 1);
 }
 
 /* Cleans up after the invariant motion pass.  */

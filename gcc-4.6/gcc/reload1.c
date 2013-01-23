@@ -4159,6 +4159,9 @@ init_eliminable_invariants (rtx first, bool do_subregs)
 		}
 	      else if (function_invariant_p (x))
 		{
+		  enum machine_mode mode;
+
+		  mode = GET_MODE (SET_DEST (set));
 		  if (GET_CODE (x) == PLUS)
 		    {
 		      /* This is PLUS of frame pointer and a constant,
@@ -4171,12 +4174,11 @@ init_eliminable_invariants (rtx first, bool do_subregs)
 		      reg_equiv_invariant[i] = x;
 		      num_eliminable_invariants++;
 		    }
-		  else if (LEGITIMATE_CONSTANT_P (x))
+		  else if (targetm.legitimate_constant_p (mode, x))
 		    reg_equiv_constant[i] = x;
 		  else
 		    {
-		      reg_equiv_memory_loc[i]
-			= force_const_mem (GET_MODE (SET_DEST (set)), x);
+		      reg_equiv_memory_loc[i] = force_const_mem (mode, x);
 		      if (! reg_equiv_memory_loc[i])
 			reg_equiv_init[i] = NULL_RTX;
 		    }
@@ -4477,6 +4479,43 @@ scan_paradoxical_subregs (rtx x)
 	    scan_paradoxical_subregs (XVECEXP (x, i, j));
 	}
     }
+}
+
+/* *OP_PTR and *OTHER_PTR are two operands to a conceptual reload.
+   If *OP_PTR is a paradoxical subreg, try to remove that subreg
+   and apply the corresponding narrowing subreg to *OTHER_PTR.
+   Return true if the operands were changed, false otherwise.  */
+
+static bool
+strip_paradoxical_subreg (rtx *op_ptr, rtx *other_ptr)
+{
+  rtx op, inner, other, tem;
+
+  op = *op_ptr;
+  if (GET_CODE (op) != SUBREG)
+    return false;
+
+  inner = SUBREG_REG (op);
+  if (GET_MODE_SIZE (GET_MODE (op)) <= GET_MODE_SIZE (GET_MODE (inner)))
+    return false;
+
+  other = *other_ptr;
+  tem = gen_lowpart_common (GET_MODE (inner), other);
+  if (!tem)
+    return false;
+
+  /* If the lowpart operation turned a hard register into a subreg,
+     rather than simplifying it to another hard register, then the
+     mode change cannot be properly represented.  For example, OTHER
+     might be valid in its current mode, but not in the new one.  */
+  if (GET_CODE (tem) == SUBREG
+      && REG_P (other)
+      && HARD_REGISTER_P (other))
+    return false;
+
+  *op_ptr = inner;
+  *other_ptr = tem;
+  return true;
 }
 
 /* A subroutine of reload_as_needed.  If INSN has a REG_EH_REGION note,
@@ -5558,7 +5597,7 @@ gen_reload_chain_without_interm_reg_p (int r1, int r2)
      chain reloads or do need an intermediate hard registers.  */
   bool result = true;
   int regno, n, code;
-  rtx out, in, tem, insn;
+  rtx out, in, insn;
   rtx last = get_last_insn ();
 
   /* Make r2 a component of r1.  */
@@ -5577,11 +5616,7 @@ gen_reload_chain_without_interm_reg_p (int r1, int r2)
 
   /* If IN is a paradoxical SUBREG, remove it and try to put the
      opposite SUBREG on OUT.  Likewise for a paradoxical SUBREG on OUT.  */
-  if (GET_CODE (in) == SUBREG
-      && (GET_MODE_SIZE (GET_MODE (in))
-	  > GET_MODE_SIZE (GET_MODE (SUBREG_REG (in))))
-      && (tem = gen_lowpart_common (GET_MODE (SUBREG_REG (in)), out)) != 0)
-    in = SUBREG_REG (in), out = tem;
+  strip_paradoxical_subreg (&in, &out);
 
   if (GET_CODE (in) == PLUS
       && (REG_P (XEXP (in, 0))
@@ -6453,6 +6488,8 @@ choose_reload_regs (struct insn_chain *chain)
 
 	      if (regno >= 0
 		  && reg_last_reload_reg[regno] != 0
+		  && (GET_MODE_SIZE (GET_MODE (reg_last_reload_reg[regno]))
+		      >= GET_MODE_SIZE (mode) + byte)
 #ifdef CANNOT_CHANGE_MODE_CLASS
 		  /* Verify that the register it's in can be used in
 		     mode MODE.  */
@@ -6464,24 +6501,12 @@ choose_reload_regs (struct insn_chain *chain)
 		{
 		  enum reg_class rclass = rld[r].rclass, last_class;
 		  rtx last_reg = reg_last_reload_reg[regno];
-		  enum machine_mode need_mode;
 
 		  i = REGNO (last_reg);
 		  i += subreg_regno_offset (i, GET_MODE (last_reg), byte, mode);
 		  last_class = REGNO_REG_CLASS (i);
 
-		  if (byte == 0)
-		    need_mode = mode;
-		  else
-		    need_mode
-		      = smallest_mode_for_size
-		        (GET_MODE_BITSIZE (mode) + byte * BITS_PER_UNIT,
-			 GET_MODE_CLASS (mode) == MODE_PARTIAL_INT
-			 ? MODE_INT : GET_MODE_CLASS (mode));
-
-		  if ((GET_MODE_SIZE (GET_MODE (last_reg))
-		       >= GET_MODE_SIZE (need_mode))
-		      && reg_reloaded_contents[i] == regno
+		  if (reg_reloaded_contents[i] == regno
 		      && TEST_HARD_REG_BIT (reg_reloaded_valid, i)
 		      && HARD_REGNO_MODE_OK (i, rld[r].mode)
 		      && (TEST_HARD_REG_BIT (reg_class_contents[(int) rclass], i)
@@ -7583,7 +7608,6 @@ emit_output_reload_insns (struct insn_chain *chain, struct reload *rl,
 	      if (tertiary_icode != CODE_FOR_nothing)
 		{
 		  rtx third_reloadreg = rld[tertiary_reload].reg_rtx;
-		  rtx tem;
 
 		  /* Copy primary reload reg to secondary reload reg.
 		     (Note that these have been swapped above, then
@@ -7592,13 +7616,7 @@ emit_output_reload_insns (struct insn_chain *chain, struct reload *rl,
 		  /* If REAL_OLD is a paradoxical SUBREG, remove it
 		     and try to put the opposite SUBREG on
 		     RELOADREG.  */
-		  if (GET_CODE (real_old) == SUBREG
-		      && (GET_MODE_SIZE (GET_MODE (real_old))
-			  > GET_MODE_SIZE (GET_MODE (SUBREG_REG (real_old))))
-		      && 0 != (tem = gen_lowpart_common
-			       (GET_MODE (SUBREG_REG (real_old)),
-				reloadreg)))
-		    real_old = SUBREG_REG (real_old), reloadreg = tem;
+		  strip_paradoxical_subreg (&real_old, &reloadreg);
 
 		  gen_reload (reloadreg, second_reloadreg,
 			      rl->opnum, rl->when_needed);
@@ -8414,16 +8432,8 @@ gen_reload (rtx out, rtx in, int opnum, enum reload_type type)
 
   /* If IN is a paradoxical SUBREG, remove it and try to put the
      opposite SUBREG on OUT.  Likewise for a paradoxical SUBREG on OUT.  */
-  if (GET_CODE (in) == SUBREG
-      && (GET_MODE_SIZE (GET_MODE (in))
-	  > GET_MODE_SIZE (GET_MODE (SUBREG_REG (in))))
-      && (tem = gen_lowpart_common (GET_MODE (SUBREG_REG (in)), out)) != 0)
-    in = SUBREG_REG (in), out = tem;
-  else if (GET_CODE (out) == SUBREG
-	   && (GET_MODE_SIZE (GET_MODE (out))
-	       > GET_MODE_SIZE (GET_MODE (SUBREG_REG (out))))
-	   && (tem = gen_lowpart_common (GET_MODE (SUBREG_REG (out)), in)) != 0)
-    out = SUBREG_REG (out), in = tem;
+  if (!strip_paradoxical_subreg (&in, &out))
+    strip_paradoxical_subreg (&out, &in);
 
   /* How to do this reload can get quite tricky.  Normally, we are being
      asked to reload a simple operand, such as a MEM, a constant, or a pseudo

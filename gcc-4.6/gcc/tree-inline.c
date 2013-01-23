@@ -49,8 +49,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-pass.h"
 #include "target.h"
 #include "integrate.h"
-#include "langhooks.h"
-#include "l-ipo.h"
 
 #include "rtl.h"	/* FIXME: For asm_str_count.  */
 
@@ -1523,7 +1521,7 @@ copy_bb (copy_body_data *id, basic_block bb, int frequency_scale,
      basic_block_info automatically.  */
   copy_basic_block = create_basic_block (NULL, (void *) 0,
                                          (basic_block) prev->aux);
-  copy_basic_block->count = (double)bb->count * count_scale / REG_BR_PROB_BASE;
+  copy_basic_block->count = bb->count * count_scale / REG_BR_PROB_BASE;
 
   /* We are going to rebuild frequencies from scratch.  These values
      have just small importance to drive canonicalize_loop_headers.  */
@@ -1892,8 +1890,7 @@ copy_edges_for_bb (basic_block bb, gcov_type count_scale, basic_block ret_bb)
 	    && old_edge->dest->aux != EXIT_BLOCK_PTR)
 	  flags |= EDGE_FALLTHRU;
 	new_edge = make_edge (new_bb, (basic_block) old_edge->dest->aux, flags);
-	new_edge->count
-            = old_edge->count * (double)count_scale / REG_BR_PROB_BASE;
+	new_edge->count = old_edge->count * count_scale / REG_BR_PROB_BASE;
 	new_edge->probability = old_edge->probability;
       }
 
@@ -2059,7 +2056,7 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
   gcov_type count_scale;
 
   if (ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count)
-    count_scale = (REG_BR_PROB_BASE * (double)count
+    count_scale = (REG_BR_PROB_BASE * count
 		   / ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count);
   else
     count_scale = REG_BR_PROB_BASE;
@@ -2093,18 +2090,17 @@ initialize_cfun (tree new_fndecl, tree callee_fndecl, gcov_type count)
   cfun->returns_struct = src_cfun->returns_struct;
   cfun->returns_pcc_struct = src_cfun->returns_pcc_struct;
   cfun->after_tree_profile = src_cfun->after_tree_profile;
-  cfun->module_id = src_cfun->module_id;
 
   init_empty_tree_cfg ();
 
   profile_status_for_function (cfun) = profile_status_for_function (src_cfun);
   ENTRY_BLOCK_PTR->count =
-    (ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count * (double)count_scale /
-    REG_BR_PROB_BASE);
+    (ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count * count_scale /
+     REG_BR_PROB_BASE);
   ENTRY_BLOCK_PTR->frequency
     = ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->frequency;
   EXIT_BLOCK_PTR->count =
-    (EXIT_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count * (double)count_scale /
+    (EXIT_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count * count_scale /
      REG_BR_PROB_BASE);
   EXIT_BLOCK_PTR->frequency =
     EXIT_BLOCK_PTR_FOR_FUNCTION (src_cfun)->frequency;
@@ -2198,7 +2194,7 @@ copy_cfg_body (copy_body_data * id, gcov_type count, int frequency_scale,
   gcov_type incoming_count = 0;
 
   if (ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count)
-    count_scale = (REG_BR_PROB_BASE * (double)count
+    count_scale = (REG_BR_PROB_BASE * count
 		   / ENTRY_BLOCK_PTR_FOR_FUNCTION (src_cfun)->count);
   else
     count_scale = REG_BR_PROB_BASE;
@@ -3176,13 +3172,8 @@ tree_inlinable_function_p (tree fn)
   tree always_inline;
 
   /* If we've already decided this function shouldn't be inlined,
-     there's no need to check again. But the cached bit from analysis
-     can be reset during decl merge in multi-module compilation (C FE only).
-     The problem is we can not really use a 2 state cached value --
-     can not tell the init state (unknown value) from a computed value.  */
-  if (DECL_UNINLINABLE (fn) 
-      && (!L_IPO_COMP_MODE
-          || lookup_attribute ("noinline", DECL_ATTRIBUTES (fn))))
+     there's no need to check again.  */
+  if (DECL_UNINLINABLE (fn))
     return false;
 
   /* We only warn for functions declared `inline' by the user.  */
@@ -3352,6 +3343,7 @@ estimate_operator_cost (enum tree_code code, eni_weights *weights,
     case DOT_PROD_EXPR:
     case WIDEN_MULT_PLUS_EXPR:
     case WIDEN_MULT_MINUS_EXPR:
+    case WIDEN_LSHIFT_EXPR:
 
     case VEC_WIDEN_MULT_HI_EXPR:
     case VEC_WIDEN_MULT_LO_EXPR:
@@ -3366,6 +3358,8 @@ estimate_operator_cost (enum tree_code code, eni_weights *weights,
     case VEC_EXTRACT_ODD_EXPR:
     case VEC_INTERLEAVE_HIGH_EXPR:
     case VEC_INTERLEAVE_LOW_EXPR:
+    case VEC_WIDEN_LSHIFT_HI_EXPR:
+    case VEC_WIDEN_LSHIFT_LO_EXPR:
 
       return 1;
 
@@ -3483,10 +3477,13 @@ estimate_num_insns (gimple stmt, eni_weights *weights)
       {
 	tree decl = gimple_call_fndecl (stmt);
 	tree addr = gimple_call_fn (stmt);
-	tree funtype = TREE_TYPE (addr);
+	tree funtype = NULL_TREE;
 	bool stdarg = false;
 
-	if (POINTER_TYPE_P (funtype))
+	if (addr)
+	  funtype = TREE_TYPE (addr);
+
+	if (funtype && POINTER_TYPE_P (funtype))
 	  funtype = TREE_TYPE (funtype);
 
 	/* Do not special case builtins where we see the body.
@@ -3526,7 +3523,7 @@ estimate_num_insns (gimple stmt, eni_weights *weights)
 	if (decl)
 	  funtype = TREE_TYPE (decl);
 
-	if (!VOID_TYPE_P (TREE_TYPE (funtype)))
+	if (funtype && !VOID_TYPE_P (TREE_TYPE (funtype)))
 	  cost += estimate_move_cost (TREE_TYPE (funtype));
 
 	if (funtype)
@@ -3818,6 +3815,12 @@ expand_call_inline (basic_block bb, gimple stmt, copy_body_data *id)
 	goto egress;
 
       if (lookup_attribute ("always_inline", DECL_ATTRIBUTES (fn))
+          /* For extern inline functions that get redefined we always
+	     silently ignored always_inline flag. Better behaviour would
+	     be to be able to keep both bodies and use extern inline body
+	     for inlining, but we can't do that because frontends overwrite
+	     the body.  */
+	  && !cg_edge->callee->local.redefined_extern_inline
 	  /* Avoid warnings during early inline pass. */
 	  && cgraph_global_info_ready)
 	{
@@ -4263,7 +4266,7 @@ optimize_inline_calls (tree fn)
 
       /* Double check that we inlined everything we are supposed to inline.  */
       for (e = id.dst_node->callees; e; e = e->next_callee)
-	gcc_assert (e->inline_failed || !e->call_stmt /*fake edge*/);
+	gcc_assert (e->inline_failed);
     }
 #endif
 
@@ -4361,24 +4364,7 @@ copy_tree_r (tree *tp, int *walk_subtrees, void *data ATTRIBUTE_UNUSED)
   else if (TREE_CODE_CLASS (code) == tcc_type)
     *walk_subtrees = 0;
   else if (TREE_CODE_CLASS (code) == tcc_declaration)
-    {
-      *walk_subtrees = 0;
-      if (L_IPO_COMP_MODE
-          && (code == VAR_DECL)
-          && (TREE_STATIC (*tp) || DECL_EXTERNAL (*tp)))
-        {
-          tree resolved_decl = real_varpool_node (*tp)->decl;
-          if (resolved_decl != *tp)
-            {
-              *tp = resolved_decl;
-              if (gimple_in_ssa_p (cfun))
-                {
-                  get_var_ann (resolved_decl);
-                  add_referenced_var (resolved_decl);
-                }
-            }
-        }
-    }
+    *walk_subtrees = 0;
   else if (TREE_CODE_CLASS (code) == tcc_constant)
     *walk_subtrees = 0;
   return NULL_TREE;
@@ -4973,7 +4959,7 @@ delete_unreachable_blocks_update_callgraph (copy_body_data *id)
 	        if ((e = cgraph_edge (id->dst_node, gsi_stmt (bsi))) != NULL)
 		  {
 		    if (!e->inline_failed)
-		      cgraph_remove_node_and_inline_clones (e->callee);
+		      cgraph_remove_node_and_inline_clones (e->callee, id->dst_node);
 		    else
 	              cgraph_remove_edge (e);
 		  }
@@ -4983,8 +4969,8 @@ delete_unreachable_blocks_update_callgraph (copy_body_data *id)
 		    {
 	              if ((e = cgraph_edge (node, gsi_stmt (bsi))) != NULL)
 			{
-		          if (!e->inline_failed)
-		            cgraph_remove_node_and_inline_clones (e->callee);
+		          if (!e->inline_failed && e->callee != id->src_node)
+		            cgraph_remove_node_and_inline_clones (e->callee, id->dst_node);
 			  else
 	                    cgraph_remove_edge (e);
 			}
@@ -5409,7 +5395,7 @@ tree_can_inline_p (struct cgraph_edge *e)
 	return false;
     }
 #endif
-  tree caller, callee;
+  tree caller, callee, lhs;
 
   caller = e->caller->decl;
   callee = e->callee->decl;
@@ -5436,7 +5422,13 @@ tree_can_inline_p (struct cgraph_edge *e)
   /* Do not inline calls where we cannot triviall work around mismatches
      in argument or return types.  */
   if (e->call_stmt
-      && !gimple_check_call_matching_types (e->call_stmt, callee))
+      && ((DECL_RESULT (callee)
+	   && !DECL_BY_REFERENCE (DECL_RESULT (callee))
+	   && (lhs = gimple_call_lhs (e->call_stmt)) != NULL_TREE
+	   && !useless_type_conversion_p (TREE_TYPE (DECL_RESULT (callee)),
+					  TREE_TYPE (lhs))
+	   && !fold_convertible_p (TREE_TYPE (DECL_RESULT (callee)), lhs))
+	  || !gimple_check_call_args (e->call_stmt)))
     {
       e->inline_failed = CIF_MISMATCHED_ARGUMENTS;
       if (e->call_stmt)

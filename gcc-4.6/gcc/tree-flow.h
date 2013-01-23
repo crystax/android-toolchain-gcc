@@ -516,7 +516,7 @@ extern void record_vars_into (tree, tree);
 extern void record_vars (tree);
 extern bool gimple_seq_may_fallthru (gimple_seq);
 extern bool gimple_stmt_may_fallthru (gimple);
-extern bool gimple_check_call_matching_types (gimple, tree);
+extern bool gimple_check_call_args (gimple);
 
 
 /* In tree-ssa.c  */
@@ -547,7 +547,7 @@ extern void flush_pending_stmts (edge);
 extern void verify_ssa (bool);
 extern void delete_tree_ssa (void);
 extern bool ssa_undefined_value_p (tree);
-extern void warn_uninit (enum opt_code, tree, const char *, void *);
+extern void warn_uninit (tree, const char *, void *);
 extern unsigned int warn_uninitialized_vars (bool);
 extern void execute_update_addresses_taken (void);
 
@@ -610,6 +610,9 @@ extern void replace_exp (use_operand_p, tree);
 extern bool may_propagate_copy (tree, tree);
 extern bool may_propagate_copy_into_stmt (gimple, tree);
 extern bool may_propagate_copy_into_asm (tree);
+
+/* In tree-ssa-loop-ch.c  */
+bool do_while_loop_p (struct loop *);
 
 /* Affine iv.  */
 

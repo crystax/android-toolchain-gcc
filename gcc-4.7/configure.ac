@@ -1,5 +1,5 @@
 #   Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-#   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012
+#   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013
 #   Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify it
@@ -1565,12 +1565,14 @@ fi
 if test "x$with_ppl" != xno; then
   if test "x$pwllib" = x; then
     saved_LIBS="$LIBS"
-    LIBS="$LIBS $ppllibs -lstdc++ -lm"
+    LIBS="$LIBS $ppllibs $with_host_libstdcxx"
     AC_CHECK_LIB(pwl, PWL_handle_timeout, [pwllib="-lpwl"])
     LIBS="$saved_LIBS"
   fi
 
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx"
+  dnl ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx $with_host_libstdcxx"
+  dnl zuav: there is no pwl lib in ppl 1.0
+  ppllibs="$ppllibs -lppl_c -lppl -lgmpxx $with_host_libstdcxx"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"

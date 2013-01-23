@@ -47,6 +47,8 @@ extern char arm_arch_name[];
     {							\
 	if (TARGET_DSP_MULTIPLY)			\
 	   builtin_define ("__ARM_FEATURE_DSP");	\
+	if (unaligned_access)				\
+	  builtin_define ("__ARM_FEATURE_UNALIGNED");	\
 	/* Define __arm__ even when in thumb mode, for	\
 	   consistency with armcc.  */			\
 	builtin_define ("__arm__");			\
@@ -103,6 +105,8 @@ extern char arm_arch_name[];
 	      builtin_define ("__ARM_PCS");		\
 	    builtin_define ("__ARM_EABI__");		\
 	  }						\
+	if (TARGET_IDIV)				\
+	  builtin_define ("__ARM_ARCH_EXT_IDIV__");	\
     } while (0)
 
 /* The various ARM cores.  */
@@ -196,6 +200,7 @@ extern void (*arm_lang_output_object_attributes_hook)(void);
    Do not define this macro if it does not need to do anything.  */
 #define EXTRA_SPECS						\
   { "subtarget_cpp_spec",	SUBTARGET_CPP_SPEC },           \
+  { "asm_cpu_spec",		ASM_CPU_SPEC },			\
   SUBTARGET_EXTRA_SPECS
 
 #ifndef SUBTARGET_EXTRA_SPECS
@@ -284,7 +289,8 @@ extern void (*arm_lang_output_object_attributes_hook)(void);
   (TARGET_32BIT && arm_arch6 && (arm_arch_notm || arm_arch7em))
 
 /* Should MOVW/MOVT be used in preference to a constant pool.  */
-#define TARGET_USE_MOVT (arm_arch_thumb2 && !optimize_size)
+#define TARGET_USE_MOVT \
+  (arm_arch_thumb2 && !optimize_size && !current_tune->prefer_constant_pool)
 
 /* We could use unified syntax for arm mode, but for now we just use it
    for Thumb-2.  */
@@ -309,6 +315,10 @@ extern void (*arm_lang_output_object_attributes_hook)(void);
 /* Nonzero if this chip supports ldrexd and strexd.  */
 #define TARGET_HAVE_LDREXD	(((arm_arch6k && TARGET_ARM) || arm_arch7) \
 				 && arm_arch_notm)
+
+/* Nonzero if integer division instructions supported.  */
+#define TARGET_IDIV		((TARGET_ARM && arm_arch_arm_hwdiv) \
+				 || (TARGET_THUMB2 && arm_arch_thumb_hwdiv))
 
 /* True iff the full BPABI is being used.  If TARGET_BPABI is true,
    then TARGET_AAPCS_BASED must be true -- but the converse does not
@@ -494,8 +504,11 @@ extern int arm_cpp_interwork;
 /* Nonzero if chip supports Thumb 2.  */
 extern int arm_arch_thumb2;
 
-/* Nonzero if chip supports integer division instruction.  */
-extern int arm_arch_hwdiv;
+/* Nonzero if chip supports integer division instruction in ARM mode.  */
+extern int arm_arch_arm_hwdiv;
+
+/* Nonzero if chip supports integer division instruction in Thumb mode.  */
+extern int arm_arch_thumb_hwdiv;
 
 #ifndef TARGET_DEFAULT
 #define TARGET_DEFAULT  (MASK_APCS_FRAME)
@@ -1176,12 +1189,12 @@ enum reg_class
 }
 
 /* FPA registers can't do subreg as all values are reformatted to internal
-   precision.  VFP registers may only be accessed in the mode they
-   were set.  */
-#define CANNOT_CHANGE_MODE_CLASS(FROM, TO, CLASS)	\
-  (GET_MODE_SIZE (FROM) != GET_MODE_SIZE (TO)		\
-   ? reg_classes_intersect_p (FPA_REGS, (CLASS))	\
-     || reg_classes_intersect_p (VFP_REGS, (CLASS))	\
+   precision.  In VFPv1, VFP registers could only be accessed in the mode
+   they were set, so subregs would be invalid there too.  However, we don't
+   support VFPv1 at the moment, and the restriction was lifted in VFPv2.  */
+#define CANNOT_CHANGE_MODE_CLASS(FROM, TO, CLASS)		\
+  (GET_MODE_SIZE (FROM) != GET_MODE_SIZE (TO)			\
+   ? reg_classes_intersect_p (FPA_REGS, (CLASS))		\
    : 0)
 
 /* The class value for index registers, and the one for base regs.  */
@@ -1192,7 +1205,7 @@ enum reg_class
    when addressing quantities in QI or HI mode; if we don't know the
    mode, then we must be conservative.  */
 #define MODE_BASE_REG_CLASS(MODE)					\
-    (TARGET_32BIT ? CORE_REGS :					\
+    (TARGET_ARM || (TARGET_THUMB2 && !optimize_size) ? CORE_REGS :      \
      (((MODE) == SImode) ? BASE_REGS : LO_REGS))
 
 /* For Thumb we can not support SP+reg addressing, so we return LO_REGS
@@ -1782,27 +1795,6 @@ typedef struct
 #define TARGET_DEFAULT_WORD_RELOCATIONS 0
 #endif
 
-/* Nonzero if the constant value X is a legitimate general operand.
-   It is given that X satisfies CONSTANT_P or is a CONST_DOUBLE.
-
-   On the ARM, allow any integer (invalid ones are removed later by insn
-   patterns), nice doubles and symbol_refs which refer to the function's
-   constant pool XXX.
-
-   When generating pic allow anything.  */
-#define ARM_LEGITIMATE_CONSTANT_P(X)	(flag_pic || ! label_mentioned_p (X))
-
-#define THUMB_LEGITIMATE_CONSTANT_P(X)	\
- (   GET_CODE (X) == CONST_INT		\
-  || GET_CODE (X) == CONST_DOUBLE	\
-  || CONSTANT_ADDRESS_P (X)		\
-  || flag_pic)
-
-#define LEGITIMATE_CONSTANT_P(X)			\
-  (!arm_cannot_force_const_mem (X)			\
-   && (TARGET_32BIT ? ARM_LEGITIMATE_CONSTANT_P (X)	\
-		    : THUMB_LEGITIMATE_CONSTANT_P (X)))
-
 #ifndef SUBTARGET_NAME_ENCODING_LENGTHS
 #define SUBTARGET_NAME_ENCODING_LENGTHS
 #endif
@@ -1977,7 +1969,7 @@ typedef struct
       : min >= -4096 && max < 4096					\
       ? (ADDR_DIFF_VEC_FLAGS (body).offset_unsigned = 0, HImode)	\
       : SImode)								\
-   : ((min < 0 || max >= 0x2000 || !TARGET_THUMB2) ? SImode		\
+   : ((min < 0 || max >= 0x20000 || !TARGET_THUMB2) ? SImode		\
       : (max >= 0x200) ? HImode						\
       : QImode))
 
@@ -2046,7 +2038,8 @@ typedef struct
 /* Try to generate sequences that don't involve branches, we can then use
    conditional instructions */
 #define BRANCH_COST(speed_p, predictable_p) \
-  (TARGET_32BIT ? 4 : (optimize > 0 ? 2 : 0))
+  (current_tune->branch_cost (speed_p, predictable_p))
+
 
 /* Position Independent Code.  */
 /* We decide which register to use based on the compilation options and
@@ -2284,185 +2277,34 @@ extern int making_const_table;
    : arm_gen_return_addr_mask ())
 
 
-/* Neon defines builtins from ARM_BUILTIN_MAX upwards, though they don't have
-   symbolic names defined here (which would require too much duplication).
-   FIXME?  */
-enum arm_builtins
-{
-  ARM_BUILTIN_GETWCX,
-  ARM_BUILTIN_SETWCX,
-
-  ARM_BUILTIN_WZERO,
-
-  ARM_BUILTIN_WAVG2BR,
-  ARM_BUILTIN_WAVG2HR,
-  ARM_BUILTIN_WAVG2B,
-  ARM_BUILTIN_WAVG2H,
-
-  ARM_BUILTIN_WACCB,
-  ARM_BUILTIN_WACCH,
-  ARM_BUILTIN_WACCW,
-
-  ARM_BUILTIN_WMACS,
-  ARM_BUILTIN_WMACSZ,
-  ARM_BUILTIN_WMACU,
-  ARM_BUILTIN_WMACUZ,
-
-  ARM_BUILTIN_WSADB,
-  ARM_BUILTIN_WSADBZ,
-  ARM_BUILTIN_WSADH,
-  ARM_BUILTIN_WSADHZ,
-
-  ARM_BUILTIN_WALIGN,
-
-  ARM_BUILTIN_TMIA,
-  ARM_BUILTIN_TMIAPH,
-  ARM_BUILTIN_TMIABB,
-  ARM_BUILTIN_TMIABT,
-  ARM_BUILTIN_TMIATB,
-  ARM_BUILTIN_TMIATT,
-
-  ARM_BUILTIN_TMOVMSKB,
-  ARM_BUILTIN_TMOVMSKH,
-  ARM_BUILTIN_TMOVMSKW,
-
-  ARM_BUILTIN_TBCSTB,
-  ARM_BUILTIN_TBCSTH,
-  ARM_BUILTIN_TBCSTW,
-
-  ARM_BUILTIN_WMADDS,
-  ARM_BUILTIN_WMADDU,
-
-  ARM_BUILTIN_WPACKHSS,
-  ARM_BUILTIN_WPACKWSS,
-  ARM_BUILTIN_WPACKDSS,
-  ARM_BUILTIN_WPACKHUS,
-  ARM_BUILTIN_WPACKWUS,
-  ARM_BUILTIN_WPACKDUS,
-
-  ARM_BUILTIN_WADDB,
-  ARM_BUILTIN_WADDH,
-  ARM_BUILTIN_WADDW,
-  ARM_BUILTIN_WADDSSB,
-  ARM_BUILTIN_WADDSSH,
-  ARM_BUILTIN_WADDSSW,
-  ARM_BUILTIN_WADDUSB,
-  ARM_BUILTIN_WADDUSH,
-  ARM_BUILTIN_WADDUSW,
-  ARM_BUILTIN_WSUBB,
-  ARM_BUILTIN_WSUBH,
-  ARM_BUILTIN_WSUBW,
-  ARM_BUILTIN_WSUBSSB,
-  ARM_BUILTIN_WSUBSSH,
-  ARM_BUILTIN_WSUBSSW,
-  ARM_BUILTIN_WSUBUSB,
-  ARM_BUILTIN_WSUBUSH,
-  ARM_BUILTIN_WSUBUSW,
-
-  ARM_BUILTIN_WAND,
-  ARM_BUILTIN_WANDN,
-  ARM_BUILTIN_WOR,
-  ARM_BUILTIN_WXOR,
-
-  ARM_BUILTIN_WCMPEQB,
-  ARM_BUILTIN_WCMPEQH,
-  ARM_BUILTIN_WCMPEQW,
-  ARM_BUILTIN_WCMPGTUB,
-  ARM_BUILTIN_WCMPGTUH,
-  ARM_BUILTIN_WCMPGTUW,
-  ARM_BUILTIN_WCMPGTSB,
-  ARM_BUILTIN_WCMPGTSH,
-  ARM_BUILTIN_WCMPGTSW,
-
-  ARM_BUILTIN_TEXTRMSB,
-  ARM_BUILTIN_TEXTRMSH,
-  ARM_BUILTIN_TEXTRMSW,
-  ARM_BUILTIN_TEXTRMUB,
-  ARM_BUILTIN_TEXTRMUH,
-  ARM_BUILTIN_TEXTRMUW,
-  ARM_BUILTIN_TINSRB,
-  ARM_BUILTIN_TINSRH,
-  ARM_BUILTIN_TINSRW,
-
-  ARM_BUILTIN_WMAXSW,
-  ARM_BUILTIN_WMAXSH,
-  ARM_BUILTIN_WMAXSB,
-  ARM_BUILTIN_WMAXUW,
-  ARM_BUILTIN_WMAXUH,
-  ARM_BUILTIN_WMAXUB,
-  ARM_BUILTIN_WMINSW,
-  ARM_BUILTIN_WMINSH,
-  ARM_BUILTIN_WMINSB,
-  ARM_BUILTIN_WMINUW,
-  ARM_BUILTIN_WMINUH,
-  ARM_BUILTIN_WMINUB,
-
-  ARM_BUILTIN_WMULUM,
-  ARM_BUILTIN_WMULSM,
-  ARM_BUILTIN_WMULUL,
-
-  ARM_BUILTIN_PSADBH,
-  ARM_BUILTIN_WSHUFH,
-
-  ARM_BUILTIN_WSLLH,
-  ARM_BUILTIN_WSLLW,
-  ARM_BUILTIN_WSLLD,
-  ARM_BUILTIN_WSRAH,
-  ARM_BUILTIN_WSRAW,
-  ARM_BUILTIN_WSRAD,
-  ARM_BUILTIN_WSRLH,
-  ARM_BUILTIN_WSRLW,
-  ARM_BUILTIN_WSRLD,
-  ARM_BUILTIN_WRORH,
-  ARM_BUILTIN_WRORW,
-  ARM_BUILTIN_WRORD,
-  ARM_BUILTIN_WSLLHI,
-  ARM_BUILTIN_WSLLWI,
-  ARM_BUILTIN_WSLLDI,
-  ARM_BUILTIN_WSRAHI,
-  ARM_BUILTIN_WSRAWI,
-  ARM_BUILTIN_WSRADI,
-  ARM_BUILTIN_WSRLHI,
-  ARM_BUILTIN_WSRLWI,
-  ARM_BUILTIN_WSRLDI,
-  ARM_BUILTIN_WRORHI,
-  ARM_BUILTIN_WRORWI,
-  ARM_BUILTIN_WRORDI,
-
-  ARM_BUILTIN_WUNPCKIHB,
-  ARM_BUILTIN_WUNPCKIHH,
-  ARM_BUILTIN_WUNPCKIHW,
-  ARM_BUILTIN_WUNPCKILB,
-  ARM_BUILTIN_WUNPCKILH,
-  ARM_BUILTIN_WUNPCKILW,
-
-  ARM_BUILTIN_WUNPCKEHSB,
-  ARM_BUILTIN_WUNPCKEHSH,
-  ARM_BUILTIN_WUNPCKEHSW,
-  ARM_BUILTIN_WUNPCKEHUB,
-  ARM_BUILTIN_WUNPCKEHUH,
-  ARM_BUILTIN_WUNPCKEHUW,
-  ARM_BUILTIN_WUNPCKELSB,
-  ARM_BUILTIN_WUNPCKELSH,
-  ARM_BUILTIN_WUNPCKELSW,
-  ARM_BUILTIN_WUNPCKELUB,
-  ARM_BUILTIN_WUNPCKELUH,
-  ARM_BUILTIN_WUNPCKELUW,
-
-  ARM_BUILTIN_THREAD_POINTER,
-
-  ARM_BUILTIN_NEON_BASE,
-
-  ARM_BUILTIN_MAX = ARM_BUILTIN_NEON_BASE  /* FIXME: Wrong!  */
-};
-
-/* Do emit .note.GNU-stack by default.  */
+/* Do not emit .note.GNU-stack by default.  */
 #ifndef NEED_INDICATE_EXEC_STACK
-#define NEED_INDICATE_EXEC_STACK	1
+#define NEED_INDICATE_EXEC_STACK	0
 #endif
 
 /* The maximum number of parallel loads or stores we support in an ldm/stm
    instruction.  */
 #define MAX_LDM_STM_OPS 4
+
+#define ASM_CPU_SPEC \
+   " %{mcpu=generic-*:-march=%*;"				\
+   "   :%{mcpu=*:-mcpu=%*} %{march=*:-march=%*}}"
+
+/* -mcpu=native handling only makes sense with compiler running on
+   an ARM chip.  */
+#if defined(__arm__)
+extern const char *host_detect_local_cpu (int argc, const char **argv);
+# define EXTRA_SPEC_FUNCTIONS						\
+  { "local_cpu_detect", host_detect_local_cpu },
+
+# define MCPU_MTUNE_NATIVE_SPECS					\
+   " %{march=native:%<march=native %:local_cpu_detect(arch)}"		\
+   " %{mcpu=native:%<mcpu=native %:local_cpu_detect(cpu)}"		\
+   " %{mtune=native:%<mtune=native %:local_cpu_detect(tune)}"
+#else
+# define MCPU_MTUNE_NATIVE_SPECS ""
+#endif
+
+#define DRIVER_SELF_SPECS MCPU_MTUNE_NATIVE_SPECS
 
 #endif /* ! GCC_ARM_H */

@@ -1,3 +1,94 @@
+2012-12-06  Jason Merrill  <jason@redhat.com>
+
+	PR c++/55249
+	* tree.c (build_vec_init_elt): Use the type of the initializer.
+
+2012-11-29  Jason Merrill  <jason@redhat.com>
+
+	PR c++/53862
+	* pt.c (tsubst_arg_types): Add "end" parameter.
+	(check_undeduced_parms): Use it.
+
+	PR c++/51662
+	* method.c (process_subob_fn): Increment function_depth around call to
+	instantiate_decl.
+
+2012-11-29  Kai Tietz  <ktietz@redhat.com>
+
+	PR target/53912
+	* class.c (dump_class_hierarchy_r): Cast from pointer via uintptr_t.
+	(dump_vtable): Likewise.
+
+2012-09-13  Jason Merrill  <jason@redhat.com>
+
+	PR c++/54511
+	* pt.c (tsubst_decl) [VAR_DECL]: Handle DECL_ANON_UNION_VAR_P.
+
+2012-06-25  Jason Merrill  <jason@redhat.com>
+
+	PR c++/52988
+	* typeck.c (decay_conversion): Don't discard side-effects from
+	expressions of nullptr_t.
+
+2012-04-04  Steve Ellcey <sje@cup.hp.com>
+
+	Backported from mainline.
+	* decl.c (cxx_init_decl_processing): Use ptr_mode instead of Pmode.
+
+2012-04-03  Jason Merrill  <jason@redhat.com>
+
+	PR c++/52796
+	* pt.c (tsubst_initializer_list): A pack expansion with no elements
+	means value-initialization.
+
+2012-03-01  Release Manager
+
+	* GCC 4.6.3 released.
+
+2012-02-14  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2012-02-14  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/52247
+	* pt.c (tsubst_copy_asm_operands): For LABEL_DECL values call
+	lookup_label on label's name and set TREE_USED.
+
+	PR c/52181
+	* decl.c (duplicate_decls): If olddecl has bigger DECL_ALIGN than
+	newdecl, copy DECL_ALIGN to newdecl and or DECL_USER_ALIGN bits.
+
+2012-02-09  Jakub Jelinek  <jakub@redhat.com>
+
+	Backported from mainline
+	2012-01-03  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/51669
+	* semantics.c (finish_omp_clauses): Call fold_build_cleanup_point_expr
+	on OMP_CLAUSE_{IF,NUM_THREADS,SCHEDULE_CHUNK}_EXPR.
+
+	2011-12-15  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c/51360
+	* semantics.c (finish_omp_clauses): For OMP_CLAUSE_NUM_THREADS_EXPR
+	and OMP_CLAUSE_SCHEDULE_CHUNK_EXPR call mark_rvalue_use.
+
+2012-01-19  Kai Tietz  <ktietz@redhat.com>
+
+	PR c++/51344
+	* decl2.c (save_template_attributes): Use merge_attributes
+	instead of chaining up via TREE_CHAIN.
+
+2012-01-16  Jakub Jelinek  <jakub@redhat.com>
+
+	PR c++/51854
+	* mangle.c (write_template_arg_literal): Sorry instead of aborting.
+
+2012-01-16  Jason Merrill  <jason@redhat.com>
+
+	PR c++/51868
+	* typeck.c (build_static_cast_1): Handle bit-fields properly.
+
 2011-12-20  Dodji Seketeli  <dodji@redhat.com>
 
 	PR debug/49951
@@ -98,6 +189,12 @@
 
 	PR c++/49216
 	* init.c (build_vec_init): Avoid crash on new int[1]{}.
+
+	PR c++/49855
+	PR c++/49896
+	* call.c (perform_implicit_conversion_flags): Do perform
+	scalar conversions in templates.
+	* pt.c (tsubst_copy, tsubst_copy_and_build): Handle CONVERT_EXPR.
 
 2011-10-11  Janis Johnson  <janisjo@codesourcery.com>
 

@@ -20,7 +20,7 @@
 
 #include <cinttypes>
 
-// { dg-error "ISO C.. 2011" "" { target *-*-* } 32 }
+// { dg-error "upcoming ISO" "" { target *-*-* } 32 } 
 
 
 

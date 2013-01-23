@@ -744,16 +744,10 @@ libgcov-objects = $(patsubst %,%$(objext),$(LIBGCOV))
 $(libgcov-objects): %$(objext): $(gcc_srcdir)/libgcov.c
 	$(gcc_compile) -DL$* -c $(gcc_srcdir)/libgcov.c
 
-dyn-ipa.o: %$(objext): $(gcc_srcdir)/libgcov.c
-	$(gcc_compile)  -c $(gcc_srcdir)/dyn-ipa.c
-
-pmu-profile.o: %$(objext): $(gcc_srcdir)/libgcov.c
-	$(gcc_compile)  -c $(gcc_srcdir)/pmu-profile.c
-
 
 # Static libraries.
 libgcc.a: $(libgcc-objects)
-libgcov.a: $(libgcov-objects) dyn-ipa$(objext) pmu-profile$(objext)
+libgcov.a: $(libgcov-objects)
 libunwind.a: $(libunwind-objects)
 libgcc_eh.a: $(libgcc-eh-objects)
 
@@ -801,7 +795,7 @@ libgcc_s$(SHLIB_EXT): libgcc.map
 mapfile = libgcc.map
 endif
 
-libgcc_s$(SHLIB_EXT): $(libgcc-s-objects) $(extra-parts)
+libgcc_s$(SHLIB_EXT): $(libgcc-s-objects) $(extra-parts) libgcc.a
 	# @multilib_flags@ is still needed because this may use
 	# $(GCC_FOR_TARGET) and $(LIBGCC2_CFLAGS) directly.
 	# @multilib_dir@ is not really necessary, but sometimes it has
@@ -809,7 +803,7 @@ libgcc_s$(SHLIB_EXT): $(libgcc-s-objects) $(extra-parts)
 	$(mkinstalldirs) $(MULTIDIR)
 	$(subst @multilib_flags@,$(CFLAGS) -B./,$(subst \
 		@multilib_dir@,$(MULTIDIR),$(subst \
-		@shlib_objs@,$(objects),$(subst \
+		@shlib_objs@,$(objects) libgcc.a,$(subst \
 		@shlib_base_name@,libgcc_s,$(subst \
 		@shlib_map_file@,$(mapfile),$(subst \
 		@shlib_slibdir_qual@,$(MULTIOSSUBDIR),$(subst \
@@ -983,18 +977,6 @@ install-leaf: $(install-shared) $(install-libunwind)
 	      $(RANLIB) $(gcc_objdir)$(MULTISUBDIR)/$$file ;;	\
 	  esac;							\
 	done
-
-	if [ "$(MULTIDIR)" == "." ]; then                       \
-	  gcov_src_dest="$(DESTDIR)$(inst_libdir)/gcov-src";    \
-	  $(mkinstalldirs) $$gcov_src_dest;                     \
-	  cp ../../gcc/gcov-iov.h $$gcov_src_dest;              \
-	  cp $(srcdir)/../gcc/gcov-io.h $$gcov_src_dest;        \
-	  cp $(srcdir)/../gcc/gcov-io.c $$gcov_src_dest;        \
-	  cp $(srcdir)/../gcc/libgcov.c $$gcov_src_dest;        \
-	  chmod 644 $$gcov_src_dest/gcov-iov.h                  \
-	    $$gcov_src_dest/gcov-io.h $$gcov_src_dest/gcov-io.c \
-	    $$gcov_src_dest/libgcov.c;                          \
-	fi
 
 install: install-leaf
 	@: $(MAKE) ; $(MULTIDO) $(FLAGS_TO_PASS) multi-do DO=install

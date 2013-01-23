@@ -23,22 +23,16 @@ along with GCC; see the file COPYING3.  If not see
 
 #include "gcov-io.h"
 
-extern void coverage_init (const char *, const char*);
+extern void coverage_init (const char *);
 extern void coverage_finish (void);
 
 /* Complete the coverage information for the current function. Once
    per function.  */
-extern void coverage_end_function (unsigned, unsigned);
+extern void coverage_end_function (void);
 
 /* Start outputting coverage information for the current
    function. Repeatable per function.  */
-extern int coverage_begin_output (unsigned, unsigned);
-
-/* Compute the control flow checksum for the current function.  */
-extern unsigned coverage_compute_cfg_checksum (void);
-
-/* Compute the line number checksum for the current function.  */
-extern unsigned coverage_compute_lineno_checksum (void);
+extern int coverage_begin_output (void);
 
 /* Allocate some counters. Repeatable per function.  */
 extern int coverage_counter_alloc (unsigned /*counter*/, unsigned/*num*/);
@@ -50,37 +44,8 @@ extern tree tree_coverage_counter_addr (unsigned /*counter*/, unsigned/*num*/);
 /* Get all the counters for the current function.  */
 extern gcov_type *get_coverage_counts (unsigned /*counter*/,
 				       unsigned /*expected*/,
-				       unsigned /*cfg_checksum*/,
-				       unsigned /*lineno_checksum*/,
 				       const struct gcov_ctr_summary **);
-/* Get all the counters for the current function without warning.  */
-extern gcov_type *get_coverage_counts_no_warn (struct function *, 
-                                               unsigned /*counter*/, unsigned *);
-
-extern struct cgraph_node * find_func_by_global_id (unsigned HOST_WIDE_INT gid);
-
-/* All the coverage counters are supposed to be allocated by the time
-   coverage_end_function is called. However, direct-call counters are
-   allocated after coverage_end_function has been called. This function
-   fixes up the various internal structures to reflect these counter
-   allocations. This function is called after coverage_end_function and
-   before coverage_finish.  */
-extern void coverage_dc_end_function (void);
-
-/* True if a function entry corresponding to the given function identifier
-   is present in the coverage internal data structures.  */
-extern bool coverage_function_present (unsigned fn_ident);
 
 extern tree get_gcov_type (void);
-extern tree get_gcov_unsigned_t (void);
-
-/* Mark this module as containing asm statements.  */
-extern void coverage_has_asm_stmt (void);
-
-/* Check if the specified options are valid for pmu profilig.  */
-extern int check_pmu_profile_options (const char *options);
-
-/* Defined in tree-profile.c.  */
-extern void tree_init_instrumentation_sampling (void);
 
 #endif

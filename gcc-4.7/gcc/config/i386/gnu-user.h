@@ -1,6 +1,6 @@
 /* Definitions for Intel 386 systems using GNU userspace.
    Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2001, 2002, 2004, 2005,
-   2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+   2006, 2007, 2008, 2009, 2010, 2011, 2013 Free Software Foundation, Inc.
    Contributed by Eric Youngdale.
    Modified for stabs-in-ELF by H.J. Lu.
 
@@ -57,16 +57,16 @@ along with GCC; see the file COPYING3.  If not see
 
 #undef SIZE_TYPE
 #define SIZE_TYPE "unsigned int"
- 
+
 #undef PTRDIFF_TYPE
 #define PTRDIFF_TYPE "int"
-  
+
 #undef WCHAR_TYPE
 #define WCHAR_TYPE "long int"
-   
+
 #undef WCHAR_TYPE_SIZE
 #define WCHAR_TYPE_SIZE BITS_PER_WORD
-    
+
 #define TARGET_OS_CPP_BUILTINS()		\
   do						\
     {						\
@@ -119,20 +119,20 @@ along with GCC; see the file COPYING3.  If not see
       -dynamic-linker %(dynamic_linker)} \
       %{static:-static}}"
 
-#undef	LINK_SPEC
+#undef LINK_SPEC
 #define LINK_SPEC \
   LINUX_OR_ANDROID_LD (LINUX_TARGET_LINK_SPEC, \
-		       LINUX_TARGET_LINK_SPEC " " ANDROID_LINK_SPEC)
+          LINUX_TARGET_LINK_SPEC " " ANDROID_LINK_SPEC)
 
 #undef  LIB_SPEC
 #define LIB_SPEC \
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_LIB_SPEC, \
-		       GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
+		  CRYSTAX_LIB_SPEC " " GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
 
 #undef  STARTFILE_SPEC
 #define STARTFILE_SPEC \
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_STARTFILE_SPEC, \
-		       ANDROID_STARTFILE_SPEC)
+          ANDROID_STARTFILE_SPEC)
 
 /* Similar to standard GNU userspace, but adding -ffast-math support.  */
 #define LINUX_TARGET_ENDFILE_SPEC \
@@ -144,9 +144,9 @@ along with GCC; see the file COPYING3.  If not see
 #undef  ENDFILE_SPEC
 #define ENDFILE_SPEC \
   LINUX_OR_ANDROID_LD (LINUX_TARGET_ENDFILE_SPEC " " \
-		       GNU_USER_TARGET_ENDFILE_SPEC, \
-		       LINUX_TARGET_ENDFILE_SPEC " "\
-		       ANDROID_ENDFILE_SPEC)
+          GNU_USER_TARGET_ENDFILE_SPEC, \
+          LINUX_TARGET_ENDFILE_SPEC " "\
+          ANDROID_ENDFILE_SPEC)
 
 /* A C statement (sans semicolon) to output to the stdio stream
    FILE the assembler definition of uninitialized global DECL named

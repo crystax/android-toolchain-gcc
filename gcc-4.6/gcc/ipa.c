@@ -23,7 +23,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "coretypes.h"
 #include "tm.h"
 #include "cgraph.h"
-#include "toplev.h"
 #include "tree-pass.h"
 #include "timevar.h"
 #include "gimple.h"
@@ -32,7 +31,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "pointer-set.h"
 #include "target.h"
 #include "tree-iterator.h"
-#include "l-ipo.h"
 
 /* Fill array order with all nodes with output flag set in the reverse
    topological order.  */
@@ -173,8 +171,7 @@ process_references (struct ipa_ref_list *list,
 	  struct cgraph_node *node = ipa_ref_node (ref);
 	  if (!node->reachable
 	      && node->analyzed
-	      && (!(DECL_EXTERNAL (node->decl)
-		    || cgraph_is_aux_decl_external (node))
+	      && (!DECL_EXTERNAL (node->decl)
 	          || before_inlining_p))
 	    node->reachable = true;
 	  enqueue_cgraph_node (node, first);
@@ -218,14 +215,6 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
   struct varpool_node *vnode, *vnext;
   bool changed = false;
 
-  /* In LIPO mode, do not remove functions until after global linking
-     is performed. Otherwise functions needed for cross module inlining
-     may get eliminated. Global linking will be done just before tree
-     profiling.  */
-  if (L_IPO_COMP_MODE
-     && !cgraph_pre_profiling_inlining_done)
-    return false;
-
 #ifdef ENABLE_CHECKING
   verify_cgraph ();
 #endif
@@ -248,13 +237,11 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 	    /* Keep around virtual functions for possible devirtualization.  */
 	    || (before_inlining_p
 		&& DECL_VIRTUAL_P (node->decl)
-		&& (DECL_COMDAT (node->decl) || DECL_EXTERNAL (node->decl)
-		    || cgraph_is_aux_decl_external (node)))
+		&& (DECL_COMDAT (node->decl) || DECL_EXTERNAL (node->decl)))
 	    /* Also external functions with address taken are better to stay
 	       for indirect inlining.  */
 	    || (before_inlining_p
-		&& (DECL_EXTERNAL (node->decl)
-		    || cgraph_is_aux_decl_external (node))
+		&& DECL_EXTERNAL (node->decl)
 		&& node->address_taken)))
       {
         gcc_assert (!node->global.inlined_to);
@@ -311,8 +298,7 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 		  if (!e->callee->reachable
 		      && node->analyzed
 		      && (!e->inline_failed
-			  || !(DECL_EXTERNAL (e->callee->decl)
-			       || cgraph_is_aux_decl_external (e->callee))
+			  || !DECL_EXTERNAL (e->callee->decl)
 			  || before_inlining_p))
 		    e->callee->reachable = true;
 		  enqueue_cgraph_node (e->callee, &first);
@@ -389,7 +375,6 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
   for (node = cgraph_nodes; node; node = next)
     {
       next = node->next;
-
       if (node->aux && !node->reachable)
         {
 	  cgraph_node_remove_callees (node);
@@ -433,7 +418,7 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 		       clone = clone->next_sibling_clone)
 		    if (clone->aux)
 		      break;
-		  if (!clone && !node->clone_of)
+		  if (!clone)
 		    {
 		      cgraph_release_function_body (node);
 		      node->local.inlinable = false;
@@ -450,15 +435,11 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
 		      node->prev_sibling_clone = NULL;
 		    }
 		  else
-		    if (clone)
-		      gcc_assert (!clone->in_other_partition);
+		    gcc_assert (!clone->in_other_partition);
 		  node->analyzed = false;
 		  changed = true;
-		  if (!cgraph_is_aux_decl_external (node))
-                    {
-		      cgraph_node_remove_callees (node);
-		      ipa_remove_all_references (&node->ref_list);
-		    }
+		  cgraph_node_remove_callees (node);
+		  ipa_remove_all_references (&node->ref_list);
 		}
 	    }
 	  else
@@ -472,24 +453,10 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
     {
       /* Inline clones might be kept around so their materializing allows further
          cloning.  If the function the clone is inlined into is removed, we need
-         to turn it into normal clone.  */
+         to turn it into normal cone.  */
       if (node->global.inlined_to
 	  && !node->callers)
 	{
-          /* Clean up dangling references from callees as well.
-             TODO -- should be done recursively.  */
-          if (L_IPO_COMP_MODE)
-            {
-	      struct cgraph_edge *e;
-              for (e = node->callees; e; e = e->next_callee)
-                {
-                  struct cgraph_node *callee_node;
-
-                  callee_node = e->callee;
-                  if (callee_node->global.inlined_to)
-                    callee_node->global.inlined_to = node;
-                }
-            }
 	  gcc_assert (node->clones);
 	  node->global.inlined_to = NULL;
 	  update_inlined_to_pointer (node, node);
@@ -505,22 +472,17 @@ cgraph_remove_unreachable_nodes (bool before_inlining_p, FILE *file)
   if (!optimize)
     return changed;
 
-  /* In LIPO mode, otherwise unneeded variables might be referenced in the
-     hastable used to resolve cross-module linking of variables.  */
-  if (!L_IPO_COMP_MODE)
+  if (file)
+    fprintf (file, "Reclaiming variables:");
+  for (vnode = varpool_nodes; vnode; vnode = vnext)
     {
-      if (file)
-	fprintf (file, "Reclaiming variables:");
-      for (vnode = varpool_nodes; vnode; vnode = vnext)
-	{
-	  vnext = vnode->next;
-	  if (!vnode->needed)
-	    {
-	      if (file)
-		fprintf (file, " %s", varpool_node_name (vnode));
-	      varpool_remove_node (vnode);
-	      changed = true;
-	    }
+      vnext = vnode->next;
+      if (!vnode->needed)
+        {
+	  if (file)
+	    fprintf (file, " %s", varpool_node_name (vnode));
+	  varpool_remove_node (vnode);
+	  changed = true;
 	}
     }
 
@@ -1024,7 +986,7 @@ function_and_variable_visibility (bool whole_program)
     {
       if (!vnode->finalized)
         continue;
-      if ((vnode->needed || L_IPO_COMP_MODE)
+      if (vnode->needed
 	  && varpool_externally_visible_p
 	      (vnode, 
 	       pointer_set_contains (aliased_vnodes, vnode)))
@@ -1037,10 +999,7 @@ function_and_variable_visibility (bool whole_program)
 	  cgraph_make_decl_local (vnode->decl);
 	  vnode->resolution = LDPR_PREVAILING_DEF_IRONLY;
 	}
-      /* Static variables defined in auxiliary modules are externalized to
-         allow cross module inlining.  */
-      gcc_assert (TREE_STATIC (vnode->decl)
-                  || varpool_is_auxiliary (vnode));
+     gcc_assert (TREE_STATIC (vnode->decl));
     }
   pointer_set_destroy (aliased_nodes);
   pointer_set_destroy (aliased_vnodes);
@@ -1535,7 +1494,7 @@ struct ipa_opt_pass_d pass_ipa_profile =
 {
  {
   IPA_PASS,
-  "profile_estimate",			/* name */
+  "ipa-profile",			/* name */
   gate_ipa_profile,			/* gate */
   ipa_profile,			        /* execute */
   NULL,					/* sub */

@@ -343,6 +343,8 @@ dump_binary_rhs (pretty_printer *buffer, gimple gs, int spc, int flags)
     case VEC_EXTRACT_ODD_EXPR:
     case VEC_INTERLEAVE_HIGH_EXPR:
     case VEC_INTERLEAVE_LOW_EXPR:
+    case VEC_WIDEN_LSHIFT_HI_EXPR:
+    case VEC_WIDEN_LSHIFT_LO_EXPR:
       for (p = tree_code_name [(int) code]; *p; p++)
 	pp_character (buffer, TOUPPER (*p));
       pp_string (buffer, " <");
@@ -596,8 +598,12 @@ dump_gimple_call (pretty_printer *buffer, gimple gs, int spc, int flags)
 
   if (flags & TDF_RAW)
     {
-      dump_gimple_fmt (buffer, spc, flags, "%G <%T, %T",
-                     gs, gimple_call_fn (gs), lhs);
+      if (gimple_call_internal_p (gs))
+	dump_gimple_fmt (buffer, spc, flags, "%G <%s, %T", gs,
+			 internal_fn_name (gimple_call_internal_fn (gs)), lhs);
+      else
+	dump_gimple_fmt (buffer, spc, flags, "%G <%T, %T",
+			 gs, gimple_call_fn (gs), lhs);
       if (gimple_call_num_args (gs) > 0)
         {
           pp_string (buffer, ", ");
@@ -617,7 +623,10 @@ dump_gimple_call (pretty_printer *buffer, gimple gs, int spc, int flags)
 
 	  pp_space (buffer);
         }
-      print_call_name (buffer, gimple_call_fn (gs), flags);
+      if (gimple_call_internal_p (gs))
+	pp_string (buffer, internal_fn_name (gimple_call_internal_fn (gs)));
+      else
+	print_call_name (buffer, gimple_call_fn (gs), flags);
       pp_string (buffer, " (");
       dump_gimple_call_args (buffer, gs, flags);
       pp_character (buffer, ')');
@@ -1629,9 +1638,7 @@ dump_gimple_stmt (pretty_printer *buffer, gimple gs, int spc, int flags)
 
   if ((flags & TDF_LINENO) && gimple_has_location (gs))
     {
-      location_t loc = gimple_location (gs);
-      expanded_location xloc = expand_location (loc);
-      int discriminator = get_discriminator_from_locus (loc);
+      expanded_location xloc = expand_location (gimple_location (gs));
       pp_character (buffer, '[');
       if (xloc.file)
 	{
@@ -1641,11 +1648,6 @@ dump_gimple_stmt (pretty_printer *buffer, gimple gs, int spc, int flags)
       pp_decimal_int (buffer, xloc.line);
       pp_string (buffer, ":");
       pp_decimal_int (buffer, xloc.column);
-      if (discriminator)
-	{
-	  pp_string (buffer, " discrim ");
-	  pp_decimal_int (buffer, discriminator);
-	}
       pp_string (buffer, "] ");
     }
 
@@ -1868,6 +1870,12 @@ dump_bb_header (pretty_printer *buffer, basic_block bb, int indent, int flags)
 		pp_decimal_int (buffer, get_lineno (gsi_stmt (gsi)));
 		break;
 	      }
+
+          if (bb->discriminator)
+            {
+              pp_string (buffer, ", discriminator ");
+	      pp_decimal_int (buffer, bb->discriminator);
+            }
 	}
       newline_and_indent (buffer, indent);
 

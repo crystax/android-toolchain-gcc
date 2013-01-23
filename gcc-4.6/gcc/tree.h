@@ -398,9 +398,8 @@ struct GTY(()) tree_base {
   unsigned packed_flag : 1;
   unsigned user_align : 1;
   unsigned nameless_flag : 1;
-  unsigned expr_folded_flag : 1;
 
-  unsigned spare : 11;
+  unsigned spare : 12;
 
   /* This field is only used with type nodes; the only reason it is present
      in tree_base instead of tree_type is to save space.  The size of the
@@ -639,13 +638,6 @@ struct GTY(()) tree_common {
 
        SSA_NAME_IS_DEFAULT_DEF in
            SSA_NAME
-
-   expr_folded_flag:
-
-       EXPR_FOLDED in
-           all expressions
-           all decls
-           all constants
 */
 
 #undef DEFTREESTRUCT
@@ -1382,10 +1374,6 @@ extern void omp_clause_range_check_failed (const_tree, const char *, int,
 
 /* In fixed-point types, means a saturating type.  */
 #define TYPE_SATURATING(NODE) ((NODE)->base.saturating_flag)
-
-/* Nonzero in an expression, a decl, or a constant node if the node is
-   the result of a successful constant-folding.  */
-#define EXPR_FOLDED(NODE) ((NODE)->base.expr_folded_flag)
 
 /* These flags are available for each language front end to use internally.  */
 #define TREE_LANG_FLAG_0(NODE) ((NODE)->base.lang_flag_0)
@@ -4209,6 +4197,7 @@ extern tree build_type_no_quals (tree);
 extern tree build_index_type (tree);
 extern tree build_array_type (tree, tree);
 extern tree build_nonshared_array_type (tree, tree);
+extern tree build_array_type_nelts (tree, unsigned HOST_WIDE_INT);
 extern tree build_function_type (tree, tree);
 extern tree build_function_type_list (tree, ...);
 extern tree build_function_type_skip_args (tree, bitmap);
@@ -4638,21 +4627,10 @@ extern bool initializer_zerop (const_tree);
 
 extern VEC(tree,gc) *ctor_to_vec (tree);
 
-/* Examine CTOR to discover:
-   * how many scalar fields are set to nonzero values,
-     and place it in *P_NZ_ELTS;
-   * how many scalar fields in total are in CTOR,
-     and place it in *P_ELT_COUNT.
-   * if a type is a union, and the initializer from the constructor
-     is not the largest element in the union, then set *p_must_clear.
+extern bool categorize_ctor_elements (const_tree, HOST_WIDE_INT *,
+				      HOST_WIDE_INT *, bool *);
 
-   Return whether or not CTOR is a valid static constant initializer, the same
-   as "initializer_constant_valid_p (CTOR, TREE_TYPE (CTOR)) != 0".  */
-
-extern bool categorize_ctor_elements (const_tree, HOST_WIDE_INT *, HOST_WIDE_INT *,
-				      bool *);
-
-extern HOST_WIDE_INT count_type_elements (const_tree, bool);
+extern bool complete_ctor_at_level_p (const_tree, HOST_WIDE_INT, const_tree);
 
 /* integer_zerop (tree x) is nonzero if X is an integer constant of value 0.  */
 
@@ -4953,7 +4931,6 @@ inlined_function_outer_scope_p (const_tree block)
 
 /* In tree.c */
 extern unsigned crc32_string (unsigned, const char *);
-extern unsigned crc32_byte (unsigned, char);
 extern void clean_symbol_name (char *);
 extern tree get_file_function_name (const char *);
 extern tree get_callee_fndecl (const_tree);
@@ -5074,10 +5051,7 @@ extern tree fold_fma (location_t, tree, tree, tree, tree);
 enum operand_equal_flag
 {
   OEP_ONLY_CONST = 1,
-  OEP_PURE_SAME = 2,
-  OEP_ALLOW_NULL = 4,  /* Allow NULL operands to be passed in and compared.  */
-  OEP_ALLOW_NO_TYPE = 8  /* Allow operands both of which don't have a type
-                            to be compared.  */
+  OEP_PURE_SAME = 2
 };
 
 extern int operand_equal_p (const_tree, const_tree, unsigned int);
@@ -5381,13 +5355,6 @@ extern const struct attribute_spec *lookup_attribute_spec (const_tree);
    returned to be applied at a later stage (for example, to apply
    a decl attribute to the declaration rather than to its type).  */
 extern tree decl_attributes (tree *, tree, int);
-
-/* Return true if the given identifier tree is the name of a lock attribute
-   that takes arguments.  */
-extern bool is_lock_attribute_with_args (const_tree);
-
-/* Extract and return all lock attributes from the given attribute list.  */
-extern tree extract_lock_attributes (tree);
 
 /* In integrate.c */
 extern void set_decl_abstract_flags (tree, int);

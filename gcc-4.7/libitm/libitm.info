@@ -1,5 +1,5 @@
 This is libitm.info, produced by makeinfo version 4.13 from
-/d/gcc-4.7.2/gcc-4.7.2/libitm/libitm.texi.
+/work1/rouxy/Linaro/gcc/gcc-linaro/release/4.7-2012.12/gcc-linaro-4.7-2012.12/libitm/libitm.texi.
 
 Copyright (C) 2011 Free Software Foundation, Inc.
 
@@ -1286,15 +1286,15 @@ Index
 
 
 Tag Table:
-Node: Top1163
-Node: Enabling libitm2066
-Node: C/C++ Language Constructs for TM2460
-Node: The libitm ABI3940
-Ref: txn-code-properties7308
-Node: Internals17583
-Ref: serial-lock-impl27608
-Ref: progress-guarantees32358
-Node: GNU Free Documentation License34632
-Node: Index59773
+Node: Top1218
+Node: Enabling libitm2121
+Node: C/C++ Language Constructs for TM2515
+Node: The libitm ABI3995
+Ref: txn-code-properties7363
+Node: Internals17638
+Ref: serial-lock-impl27663
+Ref: progress-guarantees32413
+Node: GNU Free Documentation License34687
+Node: Index59828
 
 End Tag Table

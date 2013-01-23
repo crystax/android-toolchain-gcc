@@ -48,9 +48,6 @@ if test "x$GCC" != "xyes"; then
 fi
 AC_PROG_CPP
 
-# We use the C++ compiler during testing.
-AC_PROG_CXX
-
 # Some hosts don't have dlsym(RTLD_NEXT, "symbol") for use in
 # symbol interposition.  We disable shared libraries for these.
 AC_MSG_CHECKING([whether dlsym(RTLD_NEXT,...) is available])

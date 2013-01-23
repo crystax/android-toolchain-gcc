@@ -34,7 +34,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-pass.h"
 #include "value-prof.h"
 #include "predict.h"
-#include "l-ipo.h"
 
 /* Local functions, macros and variables.  */
 static const char *op_symbol (const_tree);
@@ -453,7 +452,6 @@ static void
 dump_location (pretty_printer *buffer, location_t loc)
 {
   expanded_location xloc = expand_location (loc);
-  int discriminator = get_discriminator_from_locus (loc);
 
   pp_character (buffer, '[');
   if (xloc.file)
@@ -462,11 +460,6 @@ dump_location (pretty_printer *buffer, location_t loc)
       pp_string (buffer, " : ");
     }
   pp_decimal_int (buffer, xloc.line);
-  if (discriminator)
-    {
-      pp_string (buffer, " discrim ");
-      pp_decimal_int (buffer, discriminator);
-    }
   pp_string (buffer, "] ");
 }
 
@@ -812,6 +805,8 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 	       infer them and MEM_ATTR caching will share MEM_REFs
 	       with differently-typed op0s.  */
 	    && TREE_CODE (TREE_OPERAND (node, 0)) != INTEGER_CST
+	    /* Released SSA_NAMES have no TREE_TYPE.  */
+	    && TREE_TYPE (TREE_OPERAND (node, 0)) != NULL_TREE
 	    /* Same pointer types, but ignoring POINTER_TYPE vs.
 	       REFERENCE_TYPE.  */
 	    && (TREE_TYPE (TREE_TYPE (TREE_OPERAND (node, 0)))
@@ -1178,6 +1173,8 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
 		     can't infer them and MEM_ATTR caching will share
 		     MEM_REFs with differently-typed op0s.  */
 		  && TREE_CODE (TREE_OPERAND (op0, 0)) != INTEGER_CST
+		  /* Released SSA_NAMES have no TREE_TYPE.  */
+		  && TREE_TYPE (TREE_OPERAND (op0, 0)) != NULL_TREE
 		  /* Same pointer types, but ignoring POINTER_TYPE vs.
 		     REFERENCE_TYPE.  */
 		  && (TREE_TYPE (TREE_TYPE (TREE_OPERAND (op0, 0)))
@@ -1546,6 +1543,7 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
     case RROTATE_EXPR:
     case VEC_LSHIFT_EXPR:
     case VEC_RSHIFT_EXPR:
+    case WIDEN_LSHIFT_EXPR:
     case BIT_IOR_EXPR:
     case BIT_XOR_EXPR:
     case BIT_AND_EXPR:
@@ -2216,6 +2214,22 @@ dump_generic_node (pretty_printer *buffer, tree node, int spc, int flags,
       pp_string (buffer, " > ");
       break;
 
+    case VEC_WIDEN_LSHIFT_HI_EXPR:
+      pp_string (buffer, " VEC_WIDEN_LSHIFT_HI_EXPR < ");
+      dump_generic_node (buffer, TREE_OPERAND (node, 0), spc, flags, false);
+      pp_string (buffer, ", ");
+      dump_generic_node (buffer, TREE_OPERAND (node, 1), spc, flags, false);
+      pp_string (buffer, " > ");
+      break;
+
+    case VEC_WIDEN_LSHIFT_LO_EXPR:
+      pp_string (buffer, " VEC_WIDEN_LSHIFT_HI_EXPR < ");
+      dump_generic_node (buffer, TREE_OPERAND (node, 0), spc, flags, false);
+      pp_string (buffer, ", ");
+      dump_generic_node (buffer, TREE_OPERAND (node, 1), spc, flags, false);
+      pp_string (buffer, " > ");
+      break;
+
     case VEC_UNPACK_HI_EXPR:
       pp_string (buffer, " VEC_UNPACK_HI_EXPR < ");
       dump_generic_node (buffer, TREE_OPERAND (node, 0), spc, flags, false);
@@ -2538,6 +2552,9 @@ op_code_prio (enum tree_code code)
     case RSHIFT_EXPR:
     case LROTATE_EXPR:
     case RROTATE_EXPR:
+    case VEC_WIDEN_LSHIFT_HI_EXPR:
+    case VEC_WIDEN_LSHIFT_LO_EXPR:
+    case WIDEN_LSHIFT_EXPR:
       return 11;
 
     case WIDEN_SUM_EXPR:
@@ -2712,6 +2729,9 @@ op_symbol_code (enum tree_code code)
 
     case VEC_RSHIFT_EXPR:
       return "v>>";
+
+    case WIDEN_LSHIFT_EXPR:
+      return "w<<";
 
     case POINTER_PLUS_EXPR:
       return "+";
@@ -3015,46 +3035,4 @@ pp_base_tree_identifier (pretty_printer *pp, tree id)
   else
     pp_append_text (pp, IDENTIFIER_POINTER (id),
 		    IDENTIFIER_POINTER (id) + IDENTIFIER_LENGTH (id));
-}
-
-/* A helper function that is used to dump function information before the
-   function dump.  */
-
-void
-dump_function_header (FILE *dump_file, tree fdecl, int flags)
-{
-  const char *dname, *aname;
-  struct cgraph_node *node = cgraph_get_node (fdecl);
-  struct function *fun = DECL_STRUCT_FUNCTION (fdecl);
-
-  dname = lang_hooks.decl_printable_name (fdecl, 2);
-
-  if (DECL_ASSEMBLER_NAME_SET_P (fdecl))
-    aname = (IDENTIFIER_POINTER
-             (DECL_ASSEMBLER_NAME (fdecl)));
-  else
-    aname = "<unset-asm-name>";
-
-  if (L_IPO_COMP_MODE)
-    fprintf (dump_file, "\n;; Function %s (%s, funcdef_no=%d:%d",
-             dname, aname, FUNC_DECL_MODULE_ID (fun),
-             FUNC_DECL_FUNC_ID (fun));
-  else
-    fprintf (dump_file, "\n;; Function %s (%s, funcdef_no=%d",
-             dname, aname, fun->funcdef_no);
-  if (!(flags & TDF_NOUID))
-    fprintf (dump_file, ", decl_uid=%d", DECL_UID (fdecl));
-  if (node)
-    {
-      fprintf (dump_file, ", cgraph_uid=%d)%s\n\n", node->uid,
-               node->frequency == NODE_FREQUENCY_HOT
-               ? " (hot)"
-               : node->frequency == NODE_FREQUENCY_UNLIKELY_EXECUTED
-               ? " (unlikely executed)"
-               : node->frequency == NODE_FREQUENCY_EXECUTED_ONCE
-               ? " (executed once)"
-               : "");
-    }
-  else
-    fprintf (dump_file, ")\n\n");
 }

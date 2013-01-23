@@ -1392,6 +1392,7 @@ AC_DEFUN([GLIBCXX_CHECK_C99_TR1], [
   AC_CACHE_VAL(glibcxx_cv_c99_stdint_tr1, [
   AC_TRY_COMPILE([#define __STDC_LIMIT_MACROS
 		  #define __STDC_CONSTANT_MACROS
+		  #define __STDC_VERSION__ 199901L
 		  #include <stdint.h>],
 		 [typedef int8_t          my_int8_t;
 		  my_int8_t               i8 = INT8_MIN;
@@ -3379,8 +3380,7 @@ AC_DEFUN([GLIBCXX_CHECK_GTHREADS], [
   AC_TRY_COMPILE([#include <unistd.h>],
     [
       // In case of POSIX threads check _POSIX_TIMEOUTS.
-      #if (defined(_PTHREADS) \
-	  && (!defined(_POSIX_TIMEOUTS) || _POSIX_TIMEOUTS <= 0))
+      #if (!defined(_POSIX_TIMEOUTS) || _POSIX_TIMEOUTS <= 0)
       #error
       #endif
     ], [ac_gthread_use_mutex_timedlock=1], [ac_gthread_use_mutex_timedlock=0])

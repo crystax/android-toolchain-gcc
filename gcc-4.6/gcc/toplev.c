@@ -77,7 +77,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple.h"
 #include "tree-ssa-alias.h"
 #include "plugin.h"
-#include "tree-threadsafe-analyze.h"
 
 #if defined (DWARF2_UNWIND_INFO) || defined (DWARF2_DEBUGGING_INFO)
 #include "dwarf2out.h"
@@ -217,15 +216,6 @@ const char *dump_file_name;
    created.  */
 
 static const char *src_pwd;
-
-/* Primary module's id (non-zero). If no module-info was read in, this will
-   be zero.  */
-
-unsigned primary_module_id = 0;
-
-/* Current module id.  */
-
-unsigned current_module_id = 0;
 
 /* Initialize src_pwd with the given string, and return true.  If it
    was already initialized, return false.  As a special case, it may
@@ -572,23 +562,28 @@ emit_debug_global_declarations (tree *vec, int len)
 static void
 compile_file (void)
 {
-  timevar_start (TV_PHASE_PARSING);
-  timevar_push (TV_PARSE_GLOBAL);
+  /* Initialize yet another pass.  */
+
+  ggc_protect_identifiers = true;
+
+  init_cgraph ();
+  init_final (main_input_filename);
+  coverage_init (aux_base_name);
+  statistics_init ();
+  invoke_plugin_callbacks (PLUGIN_START_UNIT, NULL);
+
+  timevar_push (TV_PARSE);
 
   /* Call the parser, which parses the entire file (calling
      rest_of_compilation for each function).  */
   lang_hooks.parse_file ();
 
-  timevar_pop (TV_PARSE_GLOBAL);
-  timevar_stop (TV_PHASE_PARSING);
-
   /* Compilation is now finished except for writing
      what's left of the symbol table output.  */
+  timevar_pop (TV_PARSE);
 
   if (flag_syntax_only || flag_wpa)
     return;
-
-  timevar_start (TV_PHASE_GENERATE);
 
   ggc_protect_identifiers = false;
 
@@ -596,18 +591,7 @@ compile_file (void)
   lang_hooks.decls.final_write_globals ();
 
   if (seen_error ())
-    {
-      timevar_stop (TV_PHASE_GENERATE);
-      return;
-    }
-
-  /* Clean up the global data structures used by the thread safety
-     analysis.  */
-  if (warn_thread_safety)
-    clean_up_threadsafe_analysis ();
-
-  if (flag_dyn_ipa)
-    coverage_finish ();
+    return;
 
   varpool_assemble_pending_decls ();
   finish_aliases_2 ();
@@ -687,8 +671,6 @@ compile_file (void)
      into the assembly file here, and hence we can not output anything to the
      assembly file after this point.  */
   targetm.asm_out.file_end ();
-
-  timevar_stop (TV_PHASE_GENERATE);
 }
 
 /* Indexed by enum debug_info_type.  */
@@ -1344,6 +1326,13 @@ process_options (void)
 	   "and -ftree-loop-linear)");
 #endif
 
+  if (flag_strict_volatile_bitfields > 0 && !abi_version_at_least (2))
+    {
+      warning (0, "-fstrict-volatile-bitfields disabled; "
+	       "it is incompatible with ABI versions < 2");
+      flag_strict_volatile_bitfields = 0;
+    }
+
   /* Unrolling all loops implies that standard loop unrolling must also
      be done.  */
   if (flag_unroll_all_loops)
@@ -1617,15 +1606,6 @@ process_options (void)
 	       "for correctness");
       flag_omit_frame_pointer = 0;
     }
-
-  /* Enable -Werror=coverage-mismatch when -Werror and -Wno-error
-     have not been set.  */
-  if (!global_options_set.x_warnings_are_errors
-      && warn_coverage_mismatch
-      && (global_dc->classify_diagnostic[OPT_Wcoverage_mismatch] ==
-          DK_UNSPECIFIED))
-    diagnostic_classify_diagnostic (global_dc, OPT_Wcoverage_mismatch,
-                                    DK_ERROR, UNKNOWN_LOCATION);
 
   /* Save the current optimization options.  */
   optimization_default_node = build_optimization_node ();
@@ -1913,8 +1893,6 @@ do_compile (void)
   /* Don't do any more if an error has already occurred.  */
   if (!seen_error ())
     {
-      timevar_start (TV_PHASE_SETUP);
-
       /* This must be run always, because it is needed to compute the FP
 	 predefined macros, such as __LDBL_MAX__, for targets using non
 	 default FP formats.  */
@@ -1926,31 +1904,9 @@ do_compile (void)
 
       /* Language-dependent initialization.  Returns true on success.  */
       if (lang_dependent_init (main_input_filename))
-        {
-          /* Initialize yet another pass.  */
-
-          ggc_protect_identifiers = true;
-
-          init_cgraph ();
-          init_final (main_input_filename);
-          coverage_init (aux_base_name, main_input_filename);
-          statistics_init ();
-          invoke_plugin_callbacks (PLUGIN_START_UNIT, NULL);
-
-          timevar_stop (TV_PHASE_SETUP);
-
-          compile_file ();
-        }
-      else
-        {
-          timevar_stop (TV_PHASE_SETUP);
-        }
-
-      timevar_start (TV_PHASE_FINALIZE);
+	compile_file ();
 
       finalize (no_backend);
-
-      timevar_stop (TV_PHASE_FINALIZE);
     }
 
   /* Stop timing and print the times.  */

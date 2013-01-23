@@ -132,14 +132,12 @@ along with GCC; see the file COPYING3.  If not see
 #include "function.h"
 #include "ipa-prop.h"
 #include "gimple.h"
-#include "gcov-io.h"
 #include "tree-iterator.h"
 #include "tree-pass.h"
 #include "tree-dump.h"
 #include "output.h"
 #include "coverage.h"
 #include "plugin.h"
-#include "l-ipo.h"
 
 static void cgraph_expand_all_functions (void);
 static void cgraph_mark_functions_to_output (void);
@@ -347,11 +345,11 @@ void
 cgraph_finalize_function (tree decl, bool nested)
 {
   struct cgraph_node *node = cgraph_node (decl);
-  bool reset_needed = node->local.finalized;
 
   if (node->local.finalized)
     cgraph_reset_node (node);
 
+  node->pid = cgraph_max_pid ++;
   notice_global_symbol (decl);
   node->local.finalized = true;
   node->lowered = DECL_STRUCT_FUNCTION (decl)->cfg != NULL;
@@ -372,18 +370,6 @@ cgraph_finalize_function (tree decl, bool nested)
 	 FIXME: We should introduce may edges for this purpose and update
 	 their handling in unreachable function removal and inliner too.  */
       || (DECL_VIRTUAL_P (decl) && (DECL_COMDAT (decl) || DECL_EXTERNAL (decl))))
-    cgraph_mark_reachable_node (node);
-
-  /* For multi-module compilation,  an inline function may be multiply
-     defined if it is a built-in. In one file, The decl may be marked
-     as needed (e.g., referenced), and analyzed (including inline parameter
-     computation) during function lowering invoked at the end of the file scope.
-     In the following scope, it may not be needed, thus won't be put into
-     the cgraph nodes queue for further analysis. Do it here.  */
-
-  if (reset_needed
-      && L_IPO_IS_AUXILIARY_MODULE
-      && DECL_DECLARED_INLINE_P (node->decl))
     cgraph_mark_reachable_node (node);
 
   /* If we've not yet emitted decl, tell the debug info about it.  */
@@ -442,11 +428,9 @@ verify_edge_count_and_frequency (struct cgraph_edge *e)
     }
   if (gimple_has_body_p (e->caller->decl)
       && !e->caller->global.inlined_to
-      && e->call_stmt
       && (e->frequency
 	  != compute_call_stmt_bb_frequency (e->caller->decl,
-					     gimple_bb (e->call_stmt)))
-      && !e->caller->clone_of)
+					     gimple_bb (e->call_stmt))))
     {
       error ("caller edge frequency %i does not match BB frequency %i",
 	     e->frequency,
@@ -478,10 +462,6 @@ verify_cgraph_node (struct cgraph_node *node)
   bool error_found = false;
 
   if (seen_error ())
-    return;
-
-  /* Disable checking for LIPO for now.  */
-  if (L_IPO_COMP_MODE)
     return;
 
   timevar_push (TV_CGRAPH_VERIFY);
@@ -644,7 +624,6 @@ verify_cgraph_node (struct cgraph_node *node)
     }
 
   if (node->analyzed && gimple_has_body_p (node->decl)
-      && !cgraph_is_auxiliary (node->decl)
       && !TREE_ASM_WRITTEN (node->decl)
       && (!DECL_EXTERNAL (node->decl) || node->global.inlined_to)
       && !flag_wpa)
@@ -689,16 +668,8 @@ verify_cgraph_node (struct cgraph_node *node)
 				     && cgraph_get_node (decl)
 				     && (e->callee->former_clone_of
 					 != cgraph_get_node (decl)->decl)
-				     && (!L_IPO_COMP_MODE
-					 || (e->callee->former_clone_of
-					     && cgraph_lipo_get_resolved_node
-					     (e->callee->former_clone_of)->decl
-					     != cgraph_lipo_get_resolved_node (decl)->decl))
 				     && !clone_of_p (cgraph_node (decl),
-						     e->callee)
-				     && (!L_IPO_COMP_MODE
-					 || !clone_of_p (cgraph_lipo_get_resolved_node (decl),
-							 e->callee)))
+						     e->callee))
 			      {
 				error ("edge points to wrong declaration:");
 				debug_tree (e->callee->decl);
@@ -743,7 +714,7 @@ verify_cgraph_node (struct cgraph_node *node)
 
       for (e = node->callees; e; e = e->next_callee)
 	{
-	  if (!e->aux && !L_IPO_COMP_MODE)
+	  if (!e->aux)
 	    {
 	      error ("edge %s->%s has no corresponding call_stmt",
 		     identifier_to_locale (cgraph_node_name (e->caller)),
@@ -1111,9 +1082,6 @@ cgraph_finalize_compilation_unit (void)
       fflush (stderr);
     }
 
-  if (flag_dump_passes)
-    dump_passes ();
-
   /* Gimplify and lower all functions, compute reachability and
      remove unreachable nodes.  */
   cgraph_analyze_functions ();
@@ -1130,131 +1098,6 @@ cgraph_finalize_compilation_unit (void)
   timevar_pop (TV_CGRAPH);
 }
 
-/* Hash function for symbol (function) resolution.  */
-
-static hashval_t
-hash_node_by_assembler_name (const void *p)
-{
-  const struct cgraph_node *n = (const struct cgraph_node *) p;
-  return (hashval_t) decl_assembler_name_hash (DECL_ASSEMBLER_NAME (n->decl));
-}
-
-/* Equality function for cgraph_node table.  */
-
-static int
-eq_node_assembler_name (const void *p1, const void *p2)
-{
-  const struct cgraph_node *n1 = (const struct cgraph_node *) p1;
-  const_tree name = (const_tree)p2;
-  return (decl_assembler_name_equal (n1->decl, name));
-}
-
-/* In l-ipo mode compilation (light weight IPO), multiple bodies may
-   be available for the same inline declared function. cgraph linking
-   does not really merge them in order to keep the context (module info)
-   of each body. After inlining, the linkage of the function may require
-   them to be output (even if it is defined in an auxiliary module). This
-   in term may result in duplicate emission.  */
-
-static GTY((param_is (struct cgraph_node))) htab_t output_node_hash = NULL;
-
-/* Add NODE that is expanded into the hashtable.  */
-
-static struct cgraph_node *
-cgraph_add_output_node (struct cgraph_node *node)
-{
-  void **aslot;
-  tree name;
-
-  if (!L_IPO_COMP_MODE)
-    return node;
-
-  if (!TREE_PUBLIC (node->decl))
-    return node;
-
-  if (!output_node_hash)
-      output_node_hash =
-	htab_create_ggc (10, hash_node_by_assembler_name,
-                         eq_node_assembler_name, NULL);
-
-  name = DECL_ASSEMBLER_NAME (node->decl);
-
-  aslot = htab_find_slot_with_hash (output_node_hash, name,
-                                    decl_assembler_name_hash (name),
-                                    INSERT);
-  if (*aslot == NULL)
-    {
-      *aslot = node;
-      return node;
-    }
-  else
-    return (struct cgraph_node *)(*aslot);
-}
-
-#if ENABLE_CHECKING
-/* Return the cgraph_node if the function symbol for NODE is
-   expanded in the output. Returns NULL otherwise.  */
-
-static struct cgraph_node *
-cgraph_find_output_node (struct cgraph_node *node)
-{
-  void **aslot;
-  tree name;
-
-  if (!L_IPO_COMP_MODE)
-    return node;
-
-  /* We do not track non-public functions.  */
-  if (!TREE_PUBLIC (node->decl))
-    return NULL;
-
-  /* Never addedd.  */
-  if (!output_node_hash)
-    return NULL;
-
-  name = DECL_ASSEMBLER_NAME (node->decl);
-
-  aslot = htab_find_slot_with_hash (output_node_hash, name,
-                                    decl_assembler_name_hash (name),
-                                    NO_INSERT);
-  if (!aslot)
-    return NULL;
-
-  return (struct cgraph_node *)(*aslot);
-}
-#endif
-
-
-#if ENABLE_CHECKING
-/* A function used in validation. Return true if NODE was
-   not expanded and its body was not reclaimed.  */
-
-static bool
-cgraph_node_expansion_skipped (struct cgraph_node *node)
-{
-  struct cgraph_node *output_node;
-
-  if (!L_IPO_COMP_MODE)
-    return false;
-
-  output_node = cgraph_find_output_node (node);
-
-  if (output_node == node)
-    return false;
-
-  if (output_node)
-    return true;
-
-  /* No output, no duplicate being output, and the node is not
-     inlined (and reclaimed) either -- check if the caller node
-     is output/expanded or not.  */
-  if (node->global.inlined_to)
-    return cgraph_node_expansion_skipped (node->global.inlined_to);
-
-  /* External functions not marked for output.  */
-  return true;
-}
-#endif
 
 /* Figure out what functions we want to assemble.  */
 
@@ -1290,21 +1133,17 @@ cgraph_mark_functions_to_output (void)
 	  && (!cgraph_only_called_directly_p (node)
 	      || (e && node->reachable))
 	  && !TREE_ASM_WRITTEN (decl)
-	  && !(DECL_EXTERNAL (decl) || cgraph_is_aux_decl_external (node)))
-        {
-          if (cgraph_add_output_node (node) == node)
-            {
-              node->process = 1;
-              if (node->same_comdat_group)
-                {
-                  struct cgraph_node *next;
-                  for (next = node->same_comdat_group;
-                       next != node;
-                       next = next->same_comdat_group)
-                    if (cgraph_add_output_node (next) == next)
-                      next->process = 1;
-                }
-            }
+	  && !DECL_EXTERNAL (decl))
+	{
+	  node->process = 1;
+	  if (node->same_comdat_group)
+	    {
+	      struct cgraph_node *next;
+	      for (next = node->same_comdat_group;
+		   next != node;
+		   next = next->same_comdat_group)
+		next->process = 1;
+	    }
 	}
       else if (node->same_comdat_group)
 	{
@@ -1322,8 +1161,7 @@ cgraph_mark_functions_to_output (void)
 		 are inside partition, we can end up not removing the body since we no longer
 		 have analyzed node pointing to it.  */
 	      && !node->in_other_partition
-	      && !(DECL_EXTERNAL (decl) || cgraph_is_aux_decl_external (node))
-	      && !L_IPO_COMP_MODE)
+	      && !DECL_EXTERNAL (decl))
 	    {
 	      dump_cgraph_node (stderr, node);
 	      internal_error ("failed to reclaim unneeded function");
@@ -1332,14 +1170,13 @@ cgraph_mark_functions_to_output (void)
 	  gcc_assert (node->global.inlined_to
 		      || !gimple_has_body_p (decl)
 		      || node->in_other_partition
-		      || (DECL_EXTERNAL (decl)
-                          || cgraph_is_aux_decl_external (node))
-		      || cgraph_is_auxiliary (node->decl));
+		      || DECL_EXTERNAL (decl));
+
 	}
 
     }
 #ifdef ENABLE_CHECKING
-  if (check_same_comdat_groups && !L_IPO_COMP_MODE)
+  if (check_same_comdat_groups)
     for (node = cgraph_nodes; node; node = node->next)
       if (node->same_comdat_group && !node->process)
 	{
@@ -1715,18 +1552,6 @@ cgraph_expand_function (struct cgraph_node *node)
     {
       struct cgraph_node *alias, *next;
       bool saved_alias = node->alias;
-
-      if (L_IPO_COMP_MODE)
-        {
-          struct cgraph_node *node_for_asm
-              = cgraph_node_for_asm (DECL_ASSEMBLER_NAME (node->decl));
-          /* Make sure the node for asm is the one that is emitted, not
-             the one which is inlined that may be eliminated later.  */
-          if (node_for_asm && node_for_asm != node)
-            cgraph_remove_assembler_hash_node (node_for_asm);
-          cgraph_add_assembler_hash_node (node);
-        }
-
       for (alias = node->same_body;
       	   alias && alias->next; alias = alias->next)
         ;
@@ -1857,7 +1682,6 @@ cgraph_output_in_order (void)
   nodes = XCNEWVEC (struct cgraph_order_sort, max);
 
   varpool_analyze_pending_decls ();
-  varpool_remove_duplicate_weak_decls ();
 
   for (pf = cgraph_nodes; pf; pf = pf->next)
     {
@@ -1968,11 +1792,8 @@ ipa_passes (void)
 
   if (!in_lto_p)
     {
-      /* Generate coverage variables and constructors.
-         In LIPO mode, delay this until direct call profiling
-         is done.   */
-      if (!flag_dyn_ipa)
-        coverage_finish ();
+      /* Generate coverage variables and constructors.  */
+      coverage_finish ();
 
       /* Process new functions added.  */
       set_cfun (NULL);
@@ -2029,12 +1850,6 @@ cgraph_optimize (void)
     fprintf (stderr, "Performing interprocedural optimizations\n");
   cgraph_state = CGRAPH_STATE_IPA;
 
-  if (L_IPO_COMP_MODE)
-    {
-      cgraph_init_gid_map ();
-      cgraph_add_fake_indirect_call_edges ();
-    }
-
   /* Don't run the IPA passes if there was any error or sorry messages.  */
   if (!seen_error ())
     ipa_passes ();
@@ -2083,7 +1898,6 @@ cgraph_optimize (void)
 
       cgraph_expand_all_functions ();
       varpool_remove_unreferenced_decls ();
-      varpool_remove_duplicate_weak_decls ();
 
       varpool_assemble_pending_decls ();
     }
@@ -2099,12 +1913,7 @@ cgraph_optimize (void)
 #ifdef ENABLE_CHECKING
   verify_cgraph ();
   /* Double check that all inline clones are gone and that all
-     function bodies have been released from memory.
-     As an exception, allow inline clones in the callgraph if
-     they are auxiliary functions. This is because we don't
-     expand any of the auxiliary functions, which may result
-     in inline clones of some auxiliary functions to be left
-     in the callgraph.  */
+     function bodies have been released from memory.  */
   if (!seen_error ())
     {
       struct cgraph_node *node;
@@ -2112,9 +1921,8 @@ cgraph_optimize (void)
 
       for (node = cgraph_nodes; node; node = node->next)
 	if (node->analyzed
-	    && ((node->global.inlined_to && !cgraph_is_auxiliary (node->decl))
-		|| gimple_has_body_p (node->decl))
-            && !cgraph_node_expansion_skipped (node))
+	    && (node->global.inlined_to
+		|| gimple_has_body_p (node->decl)))
 	  {
 	    error_found = true;
 	    dump_cgraph_node (stderr, node);
@@ -2187,8 +1995,6 @@ cgraph_copy_node_for_versioning (struct cgraph_node *old_version,
    new_version->rtl = old_version->rtl;
    new_version->reachable = true;
    new_version->count = old_version->count;
-   new_version->max_bb_count = old_version->max_bb_count;
-   new_version->is_versioned_clone = true;
 
    for (e = old_version->callees; e; e=e->next_callee)
      if (!bbs_to_copy
@@ -2351,8 +2157,19 @@ save_inline_function_body (struct cgraph_node *node)
             first_clone->ipa_transforms_to_apply);
   first_clone->ipa_transforms_to_apply = NULL;
 
+  /* When doing recursive inlining, the clone may become unnecessary.
+     This is possible i.e. in the case when the recursive function is proved to be
+     non-throwing and the recursion happens only in the EH landing pad.
+     We can not remove the clone until we are done with saving the body.
+     Remove it now.  */
+  if (!first_clone->callers)
+    {
+      cgraph_remove_node_and_inline_clones (first_clone, NULL);
+      first_clone = NULL;
+    }
 #ifdef ENABLE_CHECKING
-  verify_cgraph_node (first_clone);
+  else
+    verify_cgraph_node (first_clone);
 #endif
   return first_clone;
 }
@@ -2394,17 +2211,6 @@ cgraph_materialize_clone (struct cgraph_node *node)
   bitmap_obstack_release (NULL);
 }
 
-/* Return the root node of clone tree.  */
-
-static inline struct cgraph_node *
-get_clone_orig_node (struct cgraph_node *node)
-{
-  while (node->clone_of
-         && node->decl == node->clone_of->decl)
-    node = node->clone_of;
-  return node;
-}
-
 /* If necessary, change the function declaration in the call statement
    associated with E so that it corresponds to the edge callee.  */
 
@@ -2422,15 +2228,7 @@ cgraph_redirect_edge_call_stmt_to_callee (struct cgraph_edge *e)
   if (e->indirect_unknown_callee
       || decl == e->callee->decl
       /* Don't update call from same body alias to the real function.  */
-      || (decl && cgraph_get_node (decl) == cgraph_get_node (e->callee->decl))
-      || (L_IPO_COMP_MODE && decl
-          /* DECL is dead function eliminated. */
-          && !(!DECL_STRUCT_FUNCTION (decl)
-	       && TREE_STATIC (decl))
-          /* Always fix up when decl is cloned.  */
-          && !e->callee->is_versioned_clone
-	  && (cgraph_lipo_get_resolved_node (decl)
-	      == cgraph_lipo_get_resolved_node (e->callee->decl))))
+      || (decl && cgraph_get_node (decl) == cgraph_get_node (e->callee->decl)))
     return e->call_stmt;
 
 #ifdef ENABLE_CHECKING
@@ -2505,8 +2303,7 @@ cgraph_redirect_edge_call_stmt_to_callee (struct cgraph_edge *e)
       update_stmt (new_stmt);
     }
 
-  cgraph_set_call_stmt_including_clones (get_clone_orig_node (e->caller),
-					 e->call_stmt, new_stmt);
+  cgraph_set_call_stmt_including_clones (e->caller, e->call_stmt, new_stmt);
 
   if (cgraph_dump_file)
     {

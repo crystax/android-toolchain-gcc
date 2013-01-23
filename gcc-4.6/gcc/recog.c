@@ -930,7 +930,9 @@ general_operand (rtx op, enum machine_mode mode)
     return ((GET_MODE (op) == VOIDmode || GET_MODE (op) == mode
 	     || mode == VOIDmode)
 	    && (! flag_pic || LEGITIMATE_PIC_OPERAND_P (op))
-	    && LEGITIMATE_CONSTANT_P (op));
+	    && targetm.legitimate_constant_p (mode == VOIDmode
+					      ? GET_MODE (op)
+					      : mode, op));
 
   /* Except for certain constants with VOIDmode, already checked for,
      OP's mode must match MODE if MODE specifies a mode.  */
@@ -1107,7 +1109,9 @@ immediate_operand (rtx op, enum machine_mode mode)
 	  && (GET_MODE (op) == mode || mode == VOIDmode
 	      || GET_MODE (op) == VOIDmode)
 	  && (! flag_pic || LEGITIMATE_PIC_OPERAND_P (op))
-	  && LEGITIMATE_CONSTANT_P (op));
+	  && targetm.legitimate_constant_p (mode == VOIDmode
+					    ? GET_MODE (op)
+					    : mode, op));
 }
 
 /* Returns 1 if OP is an operand that is a CONST_INT.  */
@@ -3023,6 +3027,7 @@ peep2_find_free_register (int from, int to, const char *class_str,
   static int search_ofs;
   enum reg_class cl;
   HARD_REG_SET live;
+  df_ref *def_rec;
   int i;
 
   gcc_assert (from < MAX_INSNS_PER_PEEP2 + 1);
@@ -3036,12 +3041,14 @@ peep2_find_free_register (int from, int to, const char *class_str,
 
   while (from != to)
     {
-      HARD_REG_SET this_live;
+      gcc_assert (peep2_insn_data[from].insn != NULL_RTX);
+
+      /* Don't use registers set or clobbered by the insn.  */
+      for (def_rec = DF_INSN_DEFS (peep2_insn_data[from].insn);
+	   *def_rec; def_rec++)
+	SET_HARD_REG_BIT (live, DF_REF_REGNO (*def_rec));
 
       from = peep2_buf_position (from + 1);
-      gcc_assert (peep2_insn_data[from].insn != NULL_RTX);
-      REG_SET_TO_HARD_REG_SET (this_live, peep2_insn_data[from].live_before);
-      IOR_HARD_REG_SET (live, this_live);
     }
 
   cl = (class_str[0] == 'r' ? GENERAL_REGS

@@ -657,15 +657,12 @@ proper position among the other output files.  */
     }"PLUGIN_COND_CLOSE" \
     %{flto|flto=*:%<fcompare-debug*} \
     %{flto} %{flto=*} %l " LINK_PIE_SPEC \
-   "%{fuse-ld=gold:%{fuse-ld=bfd:%e-fuse-ld=gold and -fuse-ld=bfd may not be used together}} \
-    %{fuse-ld=gold:-use-gold} \
-    %{fuse-ld=bfd:-use-ld}" \
    "%X %{o*} %{e*} %{N} %{n} %{r}\
     %{s} %{t} %{u*} %{z} %{Z} %{!nostdlib:%{!nostartfiles:%S}}\
     %{static:} %{L*} %(mfwrap) %(link_libgcc) %o\
     %{fopenmp|ftree-parallelize-loops=*:%:include(libgomp.spec)%(link_gomp)}\
     %(mflib) " STACK_SPLIT_SPEC "\
-    %{fprofile-arcs|fprofile-generate*|fpmu-profile-generate*|coverage:-lgcov}\
+    %{fprofile-arcs|fprofile-generate*|coverage:-lgcov}\
     %{!nostdlib:%{!nodefaultlibs:%(link_ssp) %(link_gcc_c_sequence)}}\
     %{!nostdlib:%{!nostartfiles:%E}} %{T*} }}}}}}"
 #endif
@@ -776,18 +773,14 @@ static const char *cc1_options =
  %{!fsyntax-only:%{S:%W{o*}%{!o*:-o %b.s}}}\
  %{fsyntax-only:-o %j} %{-param*}\
  %{fmudflap|fmudflapth:-fno-builtin -fno-merge-constants}\
- %{coverage:-fprofile-arcs -ftest-coverage -fno-early-inlining}";
+ %{coverage:-fprofile-arcs -ftest-coverage}";
 
-/* If an assembler wrapper is used to invoke post-assembly tools
-   like MAO, --save-temps need to be passed to save the output of
-   such post-processing tools. This is not compatible with vanilla
-   binutils gas which does not recognize --save-temps.  */
 static const char *asm_options =
 "%{-target-help:%:print-asm-header()} "
 #if HAVE_GNU_AS
 /* If GNU AS is used, then convert -w (no warnings), -I, and -v
    to the assembler equivalents.  */
-"%{v} %{w:-W} %{I*} %{save-temps*:--save-temps} "
+"%{v} %{w:-W} %{I*} "
 #endif
 "%a %Y %{c:%W{o*}%{!o*:-o %w%b%O}}%{!c:-o %d%w%u%O}";
 
@@ -2952,7 +2945,7 @@ display_help (void)
   fputs (_("  -save-temps              Do not delete intermediate files\n"), stdout);
   fputs (_("  -save-temps=<arg>        Do not delete intermediate files\n"), stdout);
   fputs (_("\
-  -[no-]canonical-prefixes Specify the path canonicalization for relative\n\
+  -no-canonical-prefixes   Do not canonicalize paths when building relative\n\
                            prefixes to other gcc components\n"), stdout);
   fputs (_("  -pipe                    Use pipes rather than intermediate files\n"), stdout);
   fputs (_("  -time                    Time the execution of each subprocess\n"), stdout);
@@ -3366,7 +3359,6 @@ driver_handle_option (struct gcc_options *opts,
 		     decoded->orig_option_with_args_text);
       break;
 
-    case OPT_canonical_prefixes:
     case OPT_no_canonical_prefixes:
       /* Already handled as a special case, so ignored here.  */
       do_save = false;
@@ -3544,25 +3536,20 @@ process_command (unsigned int decoded_options_count,
 	}
     }
 
-  /* Handle any -[no-]canonical-prefixes flags early, to assign the function
+  /* Handle any -no-canonical-prefixes flag early, to assign the function
      that builds relative prefixes.  This function creates default search
      paths that are needed later in normal option handling.  */
 
   for (j = 1; j < decoded_options_count; j++)
     {
-      if (decoded_options[j].opt_index == OPT_canonical_prefixes)
-	get_relative_prefix = make_relative_prefix;
-      else if (decoded_options[j].opt_index == OPT_no_canonical_prefixes)
-	get_relative_prefix = make_relative_prefix_ignore_links;
+      if (decoded_options[j].opt_index == OPT_no_canonical_prefixes)
+	{
+	  get_relative_prefix = make_relative_prefix_ignore_links;
+	  break;
+	}
     }
   if (! get_relative_prefix)
-    {
-#ifdef ENABLE_CANONICAL_PREFIXES
-      get_relative_prefix = make_relative_prefix;
-#else
-      get_relative_prefix = make_relative_prefix_ignore_links;
-#endif
-    }
+    get_relative_prefix = make_relative_prefix;
 
   /* Set up the default search paths.  If there is no GCC_EXEC_PREFIX,
      see if we can create it from the pathname specified in

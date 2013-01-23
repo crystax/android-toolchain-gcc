@@ -45,7 +45,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "gimple.h"
 #include "bitmap.h"
-#include "tree-threadsafe-analyze.h"
 
 /* There routines provide a modular interface to perform many parsing
    operations.  They may therefore be used during actual parsing, or
@@ -1546,20 +1545,7 @@ finish_non_static_data_member (tree decl, tree object, tree qualifying_scope)
 	  && DECL_STATIC_FUNCTION_P (current_function_decl))
 	error ("invalid use of member %q+D in static member function", decl);
       else
-        {
-          /* Suppress the error message and return the decl node if we are
-             parsing a lock attribute. We would like the users to be able to
-             reference other members of the class in the lock attributes as
-             shown in the following example:
-
-             class Bar {
-               Foo *foo;
-               int data __attribute__((guarded_by(foo->lock)));
-             };  */
-          if (parsing_lock_attribute)
-            return decl;
-          error ("invalid use of non-static data member %q+D", decl);
-        }
+	error ("invalid use of non-static data member %q+D", decl);
       error ("from this location");
 
       return error_mark_node;
@@ -3458,16 +3444,6 @@ emit_associated_thunks (tree fn)
     {
       tree thunk;
 
-      if (L_IPO_COMP_MODE)
-        {
-          /* In LIPO mode, multiple copies of defintions for the same function
-             may exist, but assembler hash table keeps only one copy which might
-             have been deleted at this point.  */
-          struct cgraph_node *n = cgraph_node (fn);
-          cgraph_add_assembler_hash_node (n);
-          cgraph_link_node (n);
-        }
-
       for (thunk = DECL_THUNKS (fn); thunk; thunk = DECL_CHAIN (thunk))
 	{
 	  if (!THUNK_ALIAS (thunk))
@@ -3828,6 +3804,8 @@ finish_omp_clauses (tree clauses)
 	  t = maybe_convert_cond (t);
 	  if (t == error_mark_node)
 	    remove = true;
+	  else if (!processing_template_decl)
+	    t = fold_build_cleanup_point_expr (TREE_TYPE (t), t);
 	  OMP_CLAUSE_IF_EXPR (c) = t;
 	  break;
 
@@ -3840,6 +3818,13 @@ finish_omp_clauses (tree clauses)
 	    {
 	      error ("num_threads expression must be integral");
 	      remove = true;
+	    }
+	  else
+	    {
+	      t = mark_rvalue_use (t);
+	      if (!processing_template_decl)
+		t = fold_build_cleanup_point_expr (TREE_TYPE (t), t);
+	      OMP_CLAUSE_NUM_THREADS_EXPR (c) = t;
 	    }
 	  break;
 
@@ -3854,6 +3839,13 @@ finish_omp_clauses (tree clauses)
 	    {
 	      error ("schedule chunk size expression must be integral");
 	      remove = true;
+	    }
+	  else
+	    {
+	      t = mark_rvalue_use (t);
+	      if (!processing_template_decl)
+		t = fold_build_cleanup_point_expr (TREE_TYPE (t), t);
+	      OMP_CLAUSE_SCHEDULE_CHUNK_EXPR (c) = t;
 	    }
 	  break;
 
@@ -6771,7 +6763,6 @@ cxx_eval_indirect_ref (const constexpr_call *call, tree t,
 
   STRIP_NOPS (sub);
   subtype = TREE_TYPE (sub);
-  gcc_assert (POINTER_TYPE_P (subtype));
 
   if (TREE_CODE (sub) == ADDR_EXPR)
     {
@@ -7216,7 +7207,6 @@ cxx_eval_constant_expression (const constexpr_call *call, tree t,
 	 used, and they can't do anything with it, so just return it.  */
       return t;
 
-    case FIELD_DECL:
     case LAMBDA_EXPR:
     case DYNAMIC_CAST_EXPR:
     case PSEUDO_DTOR_EXPR:

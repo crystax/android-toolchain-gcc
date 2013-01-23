@@ -98,7 +98,6 @@ The callgraph:
 #include "rtl.h"
 #include "ipa-utils.h"
 #include "lto-streamer.h"
-#include "l-ipo.h"
 
 const char * const ld_plugin_symbol_resolution_names[]=
 {
@@ -141,6 +140,9 @@ int cgraph_max_uid;
 
 /* Maximal uid used in cgraph edges.  */
 int cgraph_edge_max_uid;
+
+/* Maximal pid used for profiling */
+int cgraph_max_pid;
 
 /* Set when whole unit has been analyzed so we can access global info.  */
 bool cgraph_global_info_ready = false;
@@ -469,6 +471,7 @@ cgraph_create_node (void)
   struct cgraph_node *node = cgraph_allocate_node ();
 
   node->next = cgraph_nodes;
+  node->pid = -1;
   node->order = cgraph_order++;
   if (cgraph_nodes)
     cgraph_nodes->previous = node;
@@ -480,44 +483,6 @@ cgraph_create_node (void)
   cgraph_nodes = node;
   cgraph_n_nodes++;
   return node;
-}
-
-/* Add an entry in assembler hash for NODE.  */
-void
-cgraph_add_assembler_hash_node (struct cgraph_node *node)
-{
-  if (assembler_name_hash)
-    {
-      void **aslot;
-      tree name = DECL_ASSEMBLER_NAME (node->decl);
-
-      aslot = htab_find_slot_with_hash (assembler_name_hash, name,
-					decl_assembler_name_hash (name),
-					INSERT);
-      /* We can have multiple declarations with same assembler name. For C++
-	 it is __builtin_strlen and strlen, for instance.  Do we need to
-	 record them all?  Original implementation marked just first one
-	 so lets hope for the best.  */
-      if (*aslot == NULL)
-	*aslot = node;
-    }
-}
-
-/* Remove from assembler hash for NODE.  */
-void
-cgraph_remove_assembler_hash_node (struct cgraph_node *node)
-{
-  void **slot;
-  if (assembler_name_hash)
-    {
-      tree name = DECL_ASSEMBLER_NAME (node->decl);
-      slot = htab_find_slot_with_hash (assembler_name_hash, name,
-				       decl_assembler_name_hash (name),
-				       NO_INSERT);
-      /* Inline clones are not hashed.  */
-      if (slot && *slot == node)
-        htab_clear_slot (assembler_name_hash, slot);
-    }
 }
 
 /* Return cgraph node assigned to DECL.  Create new one when needed.  */
@@ -553,7 +518,21 @@ cgraph_node (tree decl)
       node->next_nested = node->origin->nested;
       node->origin->nested = node;
     }
-  cgraph_add_assembler_hash_node (node);
+  if (assembler_name_hash)
+    {
+      void **aslot;
+      tree name = DECL_ASSEMBLER_NAME (decl);
+
+      aslot = htab_find_slot_with_hash (assembler_name_hash, name,
+					decl_assembler_name_hash (name),
+					INSERT);
+      /* We can have multiple declarations with same assembler name. For C++
+	 it is __builtin_strlen and strlen, for instance.  Do we need to
+	 record them all?  Original implementation marked just first one
+	 so lets hope for the best.  */
+      if (*aslot == NULL)
+	*aslot = node;
+    }
   return node;
 }
 
@@ -851,9 +830,7 @@ cgraph_edge (struct cgraph_node *node, gimple call_stmt)
     {
       node->call_site_hash = htab_create_ggc (120, edge_hash, edge_eq, NULL);
       for (e2 = node->callees; e2; e2 = e2->next_callee)
-	/* Skip fake edges.  */
-	if (e2->call_stmt)
-	  cgraph_add_edge_to_call_site_hash (e2);
+	cgraph_add_edge_to_call_site_hash (e2);
       for (e2 = node->indirect_calls; e2; e2 = e2->next_callee)
 	cgraph_add_edge_to_call_site_hash (e2);
     }
@@ -1162,7 +1139,7 @@ cgraph_edge_remove_caller (struct cgraph_edge *e)
       else
 	e->caller->callees = e->next_callee;
     }
-  if (e->caller->call_site_hash && e->call_stmt)
+  if (e->caller->call_site_hash)
     htab_remove_elt_with_hash (e->caller->call_site_hash,
 			       e->call_stmt,
 	  		       htab_hash_pointer (e->call_stmt));
@@ -1200,26 +1177,6 @@ cgraph_remove_edge (struct cgraph_edge *e)
   /* Put the edge onto the free list.  */
   cgraph_free_edge (e);
 }
-
-/* Remove fake cgraph edges for indirect calls. NODE is the callee
-   of the edges.  */
-
-void
-cgraph_remove_fake_indirect_call_in_edges (struct cgraph_node *node)
-{
-  struct cgraph_edge *f, *e;
-
-  if (!L_IPO_COMP_MODE)
-    return;
-
-  for (e = node->callers; e; e = f)
-    {
-      f = e->next_caller;
-      if (!e->call_stmt)
-        cgraph_remove_edge (e);
-    }
-}
-
 
 /* Set callee of call graph edge E and add it to the corresponding set of
    callers. */
@@ -1447,8 +1404,6 @@ cgraph_node_remove_callers (struct cgraph_node *node)
 void
 cgraph_release_function_body (struct cgraph_node *node)
 {
-  if (cgraph_is_aux_decl_external (node))
-    DECL_EXTERNAL (node->decl) = 1;
   if (DECL_STRUCT_FUNCTION (node->decl))
     {
       tree old_decl = current_function_decl;
@@ -1716,14 +1671,19 @@ cgraph_remove_node (struct cgraph_node *node)
 		  || n->in_other_partition)))
 	kill_body = true;
     }
-
-  cgraph_remove_assembler_hash_node (node);
+  if (assembler_name_hash)
+    {
+      tree name = DECL_ASSEMBLER_NAME (node->decl);
+      slot = htab_find_slot_with_hash (assembler_name_hash, name,
+				       decl_assembler_name_hash (name),
+				       NO_INSERT);
+      /* Inline clones are not hashed.  */
+      if (slot && *slot == node)
+        htab_clear_slot (assembler_name_hash, slot);
+    }
 
   if (kill_body)
     cgraph_release_function_body (node);
-
-  cgraph_remove_link_node (node);
-
   node->decl = NULL;
   if (node->call_site_hash)
     {
@@ -1740,19 +1700,27 @@ cgraph_remove_node (struct cgraph_node *node)
   free_nodes = node;
 }
 
-/* Remove the node from cgraph.  */
+/* Remove the node from cgraph and all inline clones inlined into it.
+   Skip however removal of FORBIDDEN_NODE and return true if it needs to be
+   removed.  This allows to call the function from outer loop walking clone
+   tree.  */
 
-void
-cgraph_remove_node_and_inline_clones (struct cgraph_node *node)
+bool
+cgraph_remove_node_and_inline_clones (struct cgraph_node *node, struct cgraph_node *forbidden_node)
 {
   struct cgraph_edge *e, *next;
+  bool found = false;
+
+  if (node == forbidden_node)
+    return true;
   for (e = node->callees; e; e = next)
     {
       next = e->next_callee;
       if (!e->inline_failed)
-        cgraph_remove_node_and_inline_clones (e->callee);
+        found |= cgraph_remove_node_and_inline_clones (e->callee, forbidden_node);
     }
   cgraph_remove_node (node);
+  return found;
 }
 
 /* Notify finalize_compilation_unit that given node is reachable.  */
@@ -1768,8 +1736,7 @@ cgraph_mark_reachable_node (struct cgraph_node *node)
 	     during the optimization process.  This can happen for extern
 	     inlines when bodies was removed after inlining.  */
 	  gcc_assert ((node->analyzed || node->in_other_partition
-		       || DECL_EXTERNAL (node->decl)
-                       || cgraph_is_aux_decl_external (node)));
+		       || DECL_EXTERNAL (node->decl)));
 	}
       else
         notice_global_symbol (node->decl);
@@ -1878,7 +1845,8 @@ dump_cgraph_node (FILE *f, struct cgraph_node *node)
   struct cgraph_edge *edge;
   int indirect_calls_count = 0;
 
-  fprintf (f, "%s/%i", cgraph_node_name (node), node->uid);
+  fprintf (f, "%s/%i(%i)", cgraph_node_name (node), node->uid,
+	   node->pid);
   dump_addr (f, " @", (void *)node);
   if (DECL_ASSEMBLER_NAME_SET_P (node->decl))
     fprintf (f, " (asm: %s)", IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl)));
@@ -1904,9 +1872,6 @@ dump_cgraph_node (FILE *f, struct cgraph_node *node)
   if (node->count)
     fprintf (f, " executed "HOST_WIDEST_INT_PRINT_DEC"x",
 	     (HOST_WIDEST_INT)node->count);
-  if (node->max_bb_count)
-    fprintf (f, " hottest bb executed "HOST_WIDEST_INT_PRINT_DEC"x",
-	     (HOST_WIDEST_INT)node->max_bb_count);
   if (node->local.inline_summary.self_time)
     fprintf (f, " %i time, %i benefit", node->local.inline_summary.self_time,
     					node->local.inline_summary.time_inlining_benefit);
@@ -2237,10 +2202,6 @@ cgraph_clone_node (struct cgraph_node *n, tree decl, gcov_type count, int freq,
   new_node->global = n->global;
   new_node->rtl = n->rtl;
   new_node->count = count;
-  new_node->max_bb_count = count;
-  if (n->count)
-    new_node->max_bb_count = count * n->max_bb_count / n->count;
-  new_node->is_versioned_clone = n->is_versioned_clone;
   new_node->frequency = n->frequency;
   new_node->clone = n->clone;
   new_node->clone.tree_map = 0;
@@ -2258,9 +2219,6 @@ cgraph_clone_node (struct cgraph_node *n, tree decl, gcov_type count, int freq,
       n->count -= count;
       if (n->count < 0)
 	n->count = 0;
-      n->max_bb_count -= new_node->max_bb_count;
-      if (n->max_bb_count < 0)
-	n->max_bb_count = 0;
     }
 
   FOR_EACH_VEC_ELT (cgraph_edge_p, redirect_callers, i, e)
@@ -2293,8 +2251,17 @@ cgraph_clone_node (struct cgraph_node *n, tree decl, gcov_type count, int freq,
       slot = (struct cgraph_node **) htab_find_slot (cgraph_hash, new_node, INSERT);
       gcc_assert (!*slot);
       *slot = new_node;
-      cgraph_add_assembler_hash_node (new_node);
-      cgraph_link_node (new_node);
+      if (assembler_name_hash)
+	{
+	  void **aslot;
+	  tree name = DECL_ASSEMBLER_NAME (decl);
+
+	  aslot = htab_find_slot_with_hash (assembler_name_hash, name,
+					    decl_assembler_name_hash (name),
+					    INSERT);
+	  gcc_assert (!*aslot);
+	  *aslot = new_node;
+	}
     }
   return new_node;
 }
@@ -2424,7 +2391,6 @@ cgraph_create_virtual_clone (struct cgraph_node *old_node,
     new_node->clone.combined_args_to_skip = args_to_skip;
   new_node->local.externally_visible = 0;
   new_node->local.local = 1;
-  new_node->is_versioned_clone = 1;
   new_node->lowered = true;
   new_node->reachable = true;
 

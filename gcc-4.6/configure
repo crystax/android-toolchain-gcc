@@ -3234,9 +3234,6 @@ case "${target}" in
     noconfigdirs="$noconfigdirs target-libffi target-qthreads"
     libgloss_dir=arm
     ;;
-  arm*-*-linux-androideabi)
-    noconfigdirs="$noconfigdirs target-libiberty"
-    ;;
   arm*-*-linux-gnueabi)
     noconfigdirs="$noconfigdirs target-qthreads"
     case ${with_newlib} in
@@ -5723,7 +5720,7 @@ fi
 if test "x$with_ppl" != xno; then
   if test "x$pwllib" = x; then
     saved_LDFLAGS="$LDFLAGS"
-    LDFLAGS="$LDFLAGS $ppllibs"
+    LDFLAGS="$LDFLAGS $ppllibs $with_host_libstdcxx"
     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for PWL_handle_timeout in -lpwl" >&5
 $as_echo_n "checking for PWL_handle_timeout in -lpwl... " >&6; }
 if test "${ac_cv_lib_pwl_PWL_handle_timeout+set}" = set; then :
@@ -5767,7 +5764,7 @@ fi
     LDFLAGS="$saved_LDFLAGS"
   fi
 
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx"
+      ppllibs="$ppllibs -lppl_c -lppl -lgmpxx $with_host_libstdcxx"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"
@@ -6199,8 +6196,6 @@ esac
 if test $target_elf = yes; then :
   # ELF platforms build the lto-plugin always.
   build_lto_plugin=yes
-  # Allow ELF platforms to build the function_reordering_plugin always.
-  build_function_reordering_plugin=yes
 
 else
   if test x"$default_enable_lto" = x"yes" ; then
@@ -6332,11 +6327,6 @@ if test -d ${srcdir}/gcc; then
       extra_host_libiberty_configure_flags=--enable-shared
     fi
   fi
-  if test "${build_function_reordering_plugin}" = "yes" ; then
-    configdirs="$configdirs function_reordering_plugin"
-    extra_host_libiberty_configure_flags=--enable-shared
-  fi
-
 
 
   missing_languages=`echo ",$enable_languages," | sed -e s/,all,/,/ -e s/,c,/,/ `

@@ -107,8 +107,7 @@ AM_CXXFLAGS = \
 	$(LIBSUPCXX_PICFLAGS) \
 	$(WARN_CXXFLAGS) \
 	$(OPTIMIZE_CXXFLAGS) \
-	$(CONFIG_CXXFLAGS) \
-	$($(@)_no_omit_frame_pointer)
+	$(CONFIG_CXXFLAGS)
 
 AM_MAKEFLAGS = \
 	"gxx_include_dir=$(gxx_include_dir)"
@@ -218,8 +217,3 @@ uninstall-bitsHEADERS:
 	  q=`echo $$p | sed -e 's,.*/,,'`; \
 	  rm -f $(DESTDIR)$(bitsdir)/$$q; \
 	done
-
-# Google-specific pessimization
-eh_terminate.lo_no_omit_frame_pointer = -fno-omit-frame-pointer
-eh_throw.lo_no_omit_frame_pointer = -fno-omit-frame-pointer
-vterminate.lo_no_omit_frame_pointer = -fno-omit-frame-pointer

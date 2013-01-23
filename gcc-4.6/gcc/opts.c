@@ -36,9 +36,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "insn-attr.h"		/* For INSN_SCHEDULING and DELAY_SLOTS.  */
 #include "target.h"
 
-/* Defined in coverage.c.  */
-extern int check_pmu_profile_options (const char *options);
-
 /* Parse the -femit-struct-debug-detailed option value
    and set the flag variables. */
 
@@ -625,11 +622,6 @@ finish_options (struct gcc_options *opts, struct gcc_options *opts_set,
 {
   enum unwind_info_type ui_except;
 
-  /* If -gmlt was specified, make sure debug level is at least 1.  */
-  if (opts->x_generate_debug_line_table
-      && opts->x_debug_info_level < DINFO_LEVEL_TERSE)
-    opts->x_debug_info_level = DINFO_LEVEL_TERSE;
-
   if (opts->x_dump_base_name && ! IS_ABSOLUTE_PATH (opts->x_dump_base_name))
     {
       /* First try to make OPTS->X_DUMP_BASE_NAME relative to the
@@ -832,20 +824,11 @@ finish_options (struct gcc_options *opts, struct gcc_options *opts_set,
 	}
     }
 
-  if (opts->x_profile_arc_flag
-      || opts->x_flag_branch_probabilities)
-    {
-      /* With profile data, inlining is much more selective and makes
-	 better decisions, so increase the inlining function size
-	 limits.  Changes must be added to both the generate and use
-	 builds to avoid profile mismatches.  */
-      maybe_set_param_value
-	(PARAM_MAX_INLINE_INSNS_SINGLE, 1000,
-	 opts->x_param_values, opts_set->x_param_values);
-      maybe_set_param_value
-	(PARAM_MAX_INLINE_INSNS_AUTO, 1000,
-	 opts->x_param_values, opts_set->x_param_values);
-    }
+  /* Set PARAM_MAX_STORES_TO_SINK to 0 if either vectorization or if-conversion
+     is disabled.  */
+  if (!opts->x_flag_tree_vectorize || !opts->x_flag_tree_loop_if_convert)
+    maybe_set_param_value (PARAM_MAX_STORES_TO_SINK, 0,
+                           opts->x_param_values, opts_set->x_param_values);
 }
 
 #define LEFT_COLUMN	27
@@ -1436,15 +1419,6 @@ common_handle_option (struct gcc_options *opts,
       opts->x_warn_frame_larger_than = value != -1;
       break;
 
-    case OPT_Wshadow:
-      warn_shadow_local = value;
-      warn_shadow_compatible_local = value;
-      break;
-
-    case OPT_Wshadow_local:
-      warn_shadow_compatible_local = value;
-      break;
-
     case OPT_Wstrict_aliasing:
       set_Wstrict_aliasing (opts, value);
       break;
@@ -1535,15 +1509,6 @@ common_handle_option (struct gcc_options *opts,
       pp_set_line_maximum_length (dc->printer, value);
       break;
 
-    case OPT_fopt_info_:
-      if (value < 0 || value > OPT_INFO_MAX)
-	error_at (loc,
-		  "%d: invalid value for opt_info",
-		  value);
-      else
-	opts->x_flag_opt_info = value;
-      break;
-
     case OPT_fpack_struct_:
       if (value <= 0 || (value & (value - 1)) || value > 16)
 	error_at (loc,
@@ -1572,6 +1537,8 @@ common_handle_option (struct gcc_options *opts,
 	opts->x_flag_unroll_loops = value;
       if (!opts_set->x_flag_peel_loops)
 	opts->x_flag_peel_loops = value;
+      if (!opts_set->x_flag_tracer)
+	opts->x_flag_tracer = value;
       if (!opts_set->x_flag_value_profile_transformations)
 	opts->x_flag_value_profile_transformations = value;
       if (!opts_set->x_flag_inline_functions)
@@ -1607,15 +1574,6 @@ common_handle_option (struct gcc_options *opts,
 	 is done.  */
       if (!opts_set->x_flag_ipa_reference && in_lto_p)
         opts->x_flag_ipa_reference = false;
-      break;
-
-    case OPT_fpmu_profile_generate_:
-      /* This should be ideally turned on in conjunction with
-         -fprofile-dir or -fprofile-generate in order to specify a
-         profile directory.  */
-      if (check_pmu_profile_options (arg))
-        error ("Unrecognized pmu_profile_generate value \"%s\"", arg);
-      flag_pmu_profile_generate = xstrdup (arg);
       break;
 
     case OPT_fshow_column:
@@ -1713,16 +1671,6 @@ common_handle_option (struct gcc_options *opts,
 		       loc);
       break;
 
-    case OPT_gmlt:
-      set_debug_level (NO_DEBUG, DEFAULT_GDB_EXTENSIONS, "", opts, opts_set,
-		       loc);
-      /* Clear the debug level to NONE so that a subsequent bare -g will
-	 set it to NORMAL (level 2).  If no subsequent option sets the
-	 level explicitly, we will set it to TERSE in finish_options().  */
-      opts->x_debug_info_level = DINFO_LEVEL_NONE;
-      opts->x_generate_debug_line_table = true;
-      break;
-
     case OPT_gvms:
       set_debug_level (VMS_DEBUG, false, arg, opts, opts_set, loc);
       break;
@@ -1750,14 +1698,8 @@ common_handle_option (struct gcc_options *opts,
       dc->max_errors = value;
       break;
 
-    case OPT_fuse_ld_:
     case OPT_fuse_linker_plugin:
-      /* No-op. Used by the driver and passed to us because it starts with f.  */
-      break;
-
-    case OPT_Wuninitialized:
-      /* Also turn on maybe uninitialized warning.  */
-      warn_maybe_uninitialized = value;
+      /* No-op. Used by the driver and passed to us because it starts with f.*/
       break;
 
     default:
@@ -1936,9 +1878,6 @@ set_debug_level (enum debug_info_type type, int extended, const char *arg,
       else
 	opts->x_debug_info_level = (enum debug_info_levels) argval;
     }
-
-  opts->x_generate_debug_line_table = (opts->x_debug_info_level
-				       >= DINFO_LEVEL_NORMAL);
 }
 
 /* Arrange to dump core on error for diagnostic context DC.  (The
@@ -2041,9 +1980,6 @@ enable_warning_as_error (const char *arg, int value, unsigned int lang_mask,
       control_warning_option (option_index, (int) kind, value,
 			      loc, lang_mask,
 			      handlers, opts, opts_set, dc);
-      if (option_index == OPT_Wuninitialized)
-        enable_warning_as_error ("maybe-uninitialized", value, lang_mask,
-	                         handlers, opts, opts_set, loc, dc);
     }
   free (new_option);
 }

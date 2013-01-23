@@ -979,6 +979,16 @@ vect_get_store_cost (struct data_reference *dr, int ncopies,
         break;
       }
 
+    case dr_unaligned_unsupported:
+      {
+        *inside_cost = VECT_MAX_COST;
+
+        if (vect_print_dump_info (REPORT_COST))
+          fprintf (vect_dump, "vect_model_store_cost: unsupported access.");
+
+        break;
+      }
+
     default:
       gcc_unreachable ();
     }
@@ -1127,6 +1137,16 @@ vect_get_load_cost (struct data_reference *dr, int ncopies,
         if (vect_print_dump_info (REPORT_COST))
           fprintf (vect_dump,
 		   "vect_model_load_cost: explicit realign optimized");
+
+        break;
+      }
+
+    case dr_unaligned_unsupported:
+      {
+        *inside_cost = VECT_MAX_COST;
+
+        if (vect_print_dump_info (REPORT_COST))
+          fprintf (vect_dump, "vect_model_load_cost: unsupported access.");
 
         break;
       }
@@ -2271,10 +2291,10 @@ vectorizable_conversion (gimple stmt, gimple_stmt_iterator *gsi,
       /* For WIDEN_MULT_EXPR, if OP0 is a constant, use the type of
 	 OP1.  */
       if (CONSTANT_CLASS_P (op0))
-	ok = vect_is_simple_use_1 (op1, stmt, loop_vinfo, NULL,
+	ok = vect_is_simple_use_1 (op1, stmt, loop_vinfo, bb_vinfo,
 				   &def_stmt, &def, &dt[1], &vectype_in);
       else
-	ok = vect_is_simple_use (op1, stmt, loop_vinfo, NULL, &def_stmt,
+	ok = vect_is_simple_use (op1, stmt, loop_vinfo, bb_vinfo, &def_stmt,
 				 &def, &dt[1]);
 
       if (!ok)
@@ -5773,11 +5793,6 @@ get_vectype_for_scalar_type_and_size (tree scalar_type, unsigned size)
       && GET_MODE_CLASS (inner_mode) != MODE_FLOAT)
     return NULL_TREE;
 
-  /* We can't build a vector type of elements with alignment bigger than
-     their size.  */
-  if (nbytes < TYPE_ALIGN_UNIT (scalar_type))
-    return NULL_TREE;
-
   /* For vector types of elements whose mode precision doesn't
      match their types precision we use a element type of mode
      precision.  The vectorization routines will have to make sure
@@ -5794,10 +5809,20 @@ get_vectype_for_scalar_type_and_size (tree scalar_type, unsigned size)
      When the component mode passes the above test simply use a type
      corresponding to that mode.  The theory is that any use that
      would cause problems with this will disable vectorization anyway.  */
-  if (!SCALAR_FLOAT_TYPE_P (scalar_type)
-      && !INTEGRAL_TYPE_P (scalar_type)
-      && !POINTER_TYPE_P (scalar_type))
+  else if (!SCALAR_FLOAT_TYPE_P (scalar_type)
+	   && !INTEGRAL_TYPE_P (scalar_type)
+	   && !POINTER_TYPE_P (scalar_type))
     scalar_type = lang_hooks.types.type_for_mode (inner_mode, 1);
+
+  /* We can't build a vector type of elements with alignment bigger than
+     their size.  */
+  else if (nbytes < TYPE_ALIGN_UNIT (scalar_type))
+    scalar_type = lang_hooks.types.type_for_mode (inner_mode, 1);
+
+  /* If we felt back to using the mode fail if there was
+     no scalar type for it.  */
+  if (scalar_type == NULL_TREE)
+    return NULL_TREE;
 
   /* If no size was supplied use the mode the target prefers.   Otherwise
      lookup a vector mode of the specified size.  */

@@ -3935,6 +3935,48 @@ into consecutive memory locations.  Operand 0 is the first of the
 consecutive memory locations, operand 1 is the first register, and
 operand 2 is a constant: the number of consecutive registers.
 
+@cindex @code{vec_load_lanes@var{m}@var{n}} instruction pattern
+@item @samp{vec_load_lanes@var{m}@var{n}}
+Perform an interleaved load of several vectors from memory operand 1
+into register operand 0.  Both operands have mode @var{m}.  The register
+operand is viewed as holding consecutive vectors of mode @var{n},
+while the memory operand is a flat array that contains the same number
+of elements.  The operation is equivalent to:
+
+@smallexample
+int c = GET_MODE_SIZE (@var{m}) / GET_MODE_SIZE (@var{n});
+for (j = 0; j < GET_MODE_NUNITS (@var{n}); j++)
+  for (i = 0; i < c; i++)
+    operand0[i][j] = operand1[j * c + i];
+@end smallexample
+
+For example, @samp{vec_load_lanestiv4hi} loads 8 16-bit values
+from memory into a register of mode @samp{TI}@.  The register
+contains two consecutive vectors of mode @samp{V4HI}@.
+
+This pattern can only be used if:
+@smallexample
+TARGET_ARRAY_MODE_SUPPORTED_P (@var{n}, @var{c})
+@end smallexample
+is true.  GCC assumes that, if a target supports this kind of
+instruction for some mode @var{n}, it also supports unaligned
+loads for vectors of mode @var{n}.
+
+@cindex @code{vec_store_lanes@var{m}@var{n}} instruction pattern
+@item @samp{vec_store_lanes@var{m}@var{n}}
+Equivalent to @samp{vec_load_lanes@var{m}@var{n}}, with the memory
+and register operands reversed.  That is, the instruction is
+equivalent to:
+
+@smallexample
+int c = GET_MODE_SIZE (@var{m}) / GET_MODE_SIZE (@var{n});
+for (j = 0; j < GET_MODE_NUNITS (@var{n}); j++)
+  for (i = 0; i < c; i++)
+    operand0[j * c + i] = operand1[i][j];
+@end smallexample
+
+for a memory operand 0 and register operand 1.
+
 @cindex @code{vec_set@var{m}} instruction pattern
 @item @samp{vec_set@var{m}}
 Set given field in the vector value.  Operand 0 is the vector to modify,
@@ -4186,6 +4228,17 @@ the output vector (operand 0).
 Signed/Unsigned widening multiplication.  The two inputs (operands 1 and 2)
 are vectors with N signed/unsigned elements of size S@.  Multiply the high/low
 elements of the two vectors, and put the N/2 products of size 2*S in the
+output vector (operand 0).
+
+@cindex @code{vec_widen_ushiftl_hi_@var{m}} instruction pattern
+@cindex @code{vec_widen_ushiftl_lo_@var{m}} instruction pattern
+@cindex @code{vec_widen_sshiftl_hi_@var{m}} instruction pattern
+@cindex @code{vec_widen_sshiftl_lo_@var{m}} instruction pattern
+@item @samp{vec_widen_ushiftl_hi_@var{m}}, @samp{vec_widen_ushiftl_lo_@var{m}}
+@itemx @samp{vec_widen_sshiftl_hi_@var{m}}, @samp{vec_widen_sshiftl_lo_@var{m}}
+Signed/Unsigned widening shift left.  The first input (operand 1) is a vector
+with N signed/unsigned elements of size S@.  Operand 2 is a constant.  Shift
+the high/low elements of operand 1, and put the N/2 results of size 2*S in the
 output vector (operand 0).
 
 @cindex @code{mulhisi3} instruction pattern
@@ -5890,6 +5943,23 @@ the form
 Equality comparisons of a group of bits (usually a single bit) with zero
 will be written using @code{zero_extract} rather than the equivalent
 @code{and} or @code{sign_extract} operations.
+
+@cindex @code{mult}, canonicalization of
+@item
+@code{(sign_extend:@var{m1} (mult:@var{m2} (sign_extend:@var{m2} @var{x})
+(sign_extend:@var{m2} @var{y})))} is converted to @code{(mult:@var{m1}
+(sign_extend:@var{m1} @var{x}) (sign_extend:@var{m1} @var{y}))}, and likewise
+for @code{zero_extend}.
+
+@item
+@code{(sign_extend:@var{m1} (mult:@var{m2} (ashiftrt:@var{m2}
+@var{x} @var{s}) (sign_extend:@var{m2} @var{y})))} is converted
+to @code{(mult:@var{m1} (sign_extend:@var{m1} (ashiftrt:@var{m2}
+@var{x} @var{s})) (sign_extend:@var{m1} @var{y}))}, and likewise for
+patterns using @code{zero_extend} and @code{lshiftrt}.  If the second
+operand of @code{mult} is also a shift, then that is extended also.
+This transformation is only applied when it can be proven that the
+original operation had sufficient precision to prevent overflow.
 
 @end itemize
 

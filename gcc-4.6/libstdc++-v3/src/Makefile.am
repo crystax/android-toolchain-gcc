@@ -407,8 +407,7 @@ AM_CXXFLAGS = \
 	$(XTEMPLATE_FLAGS) \
 	$(WARN_CXXFLAGS) \
 	$(OPTIMIZE_CXXFLAGS) \
-	$(CONFIG_CXXFLAGS) \
-	$($(@)_no_omit_frame_pointer)
+	$(CONFIG_CXXFLAGS)
 
 
 # libstdc++ libtool notes
@@ -482,6 +481,3 @@ build_debug: stamp-debug
 install_debug:
 	(cd ${debugdir} && $(MAKE) \
 	toolexeclibdir=$(glibcxx_toolexeclibdir)/debug install)
-
-# Google-specific pessimization
-functexcept.lo_no_omit_frame_pointer = -fno-omit-frame-pointer

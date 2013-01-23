@@ -7282,10 +7282,15 @@ build_array_type_1 (tree elt_type, tree index_type, bool shared)
 
   if (shared)
     {
+      tree old_t = t;
       hashval_t hashcode = iterative_hash_object (TYPE_HASH (elt_type), 0);
       if (index_type)
 	hashcode = iterative_hash_object (TYPE_HASH (index_type), hashcode);
       t = type_hash_canon (hashcode, t);
+      if (t != old_t)
+	/* Lay it out again in case the element type has been completed since
+	   the array was added to the hash table.  */
+	layout_type (t);
     }
 
   if (TYPE_CANONICAL (t) == t)
@@ -7319,6 +7324,15 @@ tree
 build_nonshared_array_type (tree elt_type, tree index_type)
 {
   return build_array_type_1 (elt_type, index_type, false);
+}
+
+/* Return a representation of ELT_TYPE[NELTS], using indices of type
+   sizetype.  */
+
+tree
+build_array_type_nelts (tree elt_type, unsigned HOST_WIDE_INT nelts)
+{
+  return build_array_type (elt_type, build_index_type (size_int (nelts - 1)));
 }
 
 /* Recursively examines the array elements of TYPE, until a non-array
@@ -8494,12 +8508,14 @@ dump_tree_statistics (void)
 
 #define FILE_FUNCTION_FORMAT "_GLOBAL__%s_%s"
 
-/* Generate a crc32 of a byte.  */
+/* Generate a crc32 of a string.  */
 
 unsigned
-crc32_byte (unsigned chksum, char byte)
+crc32_string (unsigned chksum, const char *string)
 {
-  unsigned value = (unsigned) byte << 24;
+  do
+    {
+      unsigned value = *string << 24;
       unsigned ix;
 
       for (ix = 8; ix--; value <<= 1)
@@ -8510,18 +8526,6 @@ crc32_byte (unsigned chksum, char byte)
  	  chksum <<= 1;
  	  chksum ^= feedback;
   	}
-  return chksum;
-}
-
-
-/* Generate a crc32 of a string.  */
-
-unsigned
-crc32_string (unsigned chksum, const char *string)
-{
-  do
-    {
-      chksum = crc32_byte (chksum, *string);
     }
   while (*string++);
   return chksum;
@@ -8545,10 +8549,8 @@ clean_symbol_name (char *p)
       *p = '_';
 }
 
-/* Generate a name for a special-purpose function.
+/* Generate a name for a special-purpose function function.
    The generated name may need to be unique across the whole link.
-   Changes to this function may also require corresponding changes to
-   xstrdup_mask_random.
    TYPE is some string to identify the purpose of this function to the
    linker or collect2; it must start with an uppercase letter,
    one of:

@@ -36,6 +36,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "ggc.h"
 #include "basic-block.h"
 #include "output.h"
+#include "tm_p.h"
 
 static bool prefer_and_bit_test (enum machine_mode, int);
 static void do_jump_by_parts_greater (tree, tree, int, rtx, rtx, int);
@@ -1023,7 +1024,7 @@ do_compare_rtx_and_jump (rtx op0, rtx op1, enum rtx_code code, int unsignedp,
     }
   else
     {
-      if (GET_MODE_CLASS (mode) == MODE_FLOAT
+      if (SCALAR_FLOAT_MODE_P (mode)
 	  && ! can_compare_p (code, mode, ccp_jump)
 	  && can_compare_p (swap_condition (code), mode, ccp_jump))
 	{
@@ -1034,7 +1035,7 @@ do_compare_rtx_and_jump (rtx op0, rtx op1, enum rtx_code code, int unsignedp,
 	  op1 = tmp;
 	}
 
-      else if (GET_MODE_CLASS (mode) == MODE_FLOAT
+      else if (SCALAR_FLOAT_MODE_P (mode)
 	       && ! can_compare_p (code, mode, ccp_jump)
 
 	       /* Never split ORDERED and UNORDERED.  These must be implemented.  */

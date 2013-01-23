@@ -1,4 +1,4 @@
-// { dg-options "-std=c++0x -pedantic-errors" }
+// { dg-options "-std=c++0x" }
 
 void f(int i);
 

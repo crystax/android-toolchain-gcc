@@ -250,12 +250,14 @@ vect_get_and_check_slp_defs (loop_vec_info loop_vinfo, bb_vec_info bb_vinfo,
       /* Check if DEF_STMT is a part of a pattern in LOOP and get the def stmt
          from the pattern.  Check that all the stmts of the node are in the
          pattern.  */
-      if (loop && def_stmt && gimple_bb (def_stmt)
-          && flow_bb_inside_loop_p (loop, gimple_bb (def_stmt))
+      if (def_stmt && gimple_bb (def_stmt)
+          && ((loop && flow_bb_inside_loop_p (loop, gimple_bb (def_stmt)))
+	      || (!loop && gimple_bb (def_stmt) == BB_VINFO_BB (bb_vinfo)
+		  && gimple_code (def_stmt) != GIMPLE_PHI))
           && vinfo_for_stmt (def_stmt)
           && STMT_VINFO_IN_PATTERN_P (vinfo_for_stmt (def_stmt))
-          && !STMT_VINFO_RELEVANT (vinfo_for_stmt (def_stmt))
-          && !STMT_VINFO_LIVE_P (vinfo_for_stmt (def_stmt)))
+	  && !STMT_VINFO_RELEVANT (vinfo_for_stmt (def_stmt))
+	  && !STMT_VINFO_LIVE_P (vinfo_for_stmt (def_stmt)))
         {
           pattern = true;
           if (!first && !oprnd_info->first_pattern)
@@ -2026,7 +2028,9 @@ vect_slp_analyze_bb_1 (basic_block bb)
       return NULL;
     }
 
-   if (!vect_analyze_data_ref_dependences (NULL, bb_vinfo, &max_vf)
+  vect_pattern_recog (NULL, bb_vinfo);
+
+  if (!vect_analyze_data_ref_dependences (NULL, bb_vinfo, &max_vf)
        || min_vf > max_vf)
      {
        if (vect_print_dump_info (REPORT_UNVECTORIZED_LOCATIONS))
@@ -2057,16 +2061,6 @@ vect_slp_analyze_bb_1 (basic_block bb)
       return NULL;
     }
 
-   if (!vect_verify_datarefs_alignment (NULL, bb_vinfo))
-    {
-      if (vect_print_dump_info (REPORT_UNVECTORIZED_LOCATIONS))
-        fprintf (vect_dump, "not vectorized: unsupported alignment in basic "
-                            "block.\n");
-
-      destroy_bb_vec_info (bb_vinfo);
-      return NULL;
-    }
-
   /* Check the SLP opportunities in the basic block, analyze and build SLP
      trees.  */
   if (!vect_analyze_slp (NULL, bb_vinfo))
@@ -2087,6 +2081,16 @@ vect_slp_analyze_bb_1 (basic_block bb)
     {
       vect_mark_slp_stmts (SLP_INSTANCE_TREE (instance), pure_slp, -1);
       vect_mark_slp_stmts_relevant (SLP_INSTANCE_TREE (instance));
+    }
+
+   if (!vect_verify_datarefs_alignment (NULL, bb_vinfo))
+    {
+      if (vect_print_dump_info (REPORT_UNVECTORIZED_LOCATIONS))
+        fprintf (vect_dump, "not vectorized: unsupported alignment in basic "
+                            "block.\n");
+
+      destroy_bb_vec_info (bb_vinfo);
+      return NULL;
     }
 
   if (!vect_slp_analyze_operations (bb_vinfo))

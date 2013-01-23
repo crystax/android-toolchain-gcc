@@ -5162,7 +5162,8 @@ void
 gfc_dump_module (const char *name, int dump_flag)
 {
   int n;
-  char *filename, *filename_tmp;
+  char *filename, *filename_tmp, *p;
+  time_t now;
   fpos_t md5_pos;
   unsigned char md5_new[16], md5_old[16];
 
@@ -5204,8 +5205,13 @@ gfc_dump_module (const char *name, int dump_flag)
 		     filename_tmp, xstrerror (errno));
 
   /* Write the header, including space reserved for the MD5 sum.  */
-  fprintf (module_fp, "GFORTRAN module version '%s' created from %s\n"
-	   "MD5:", MOD_VERSION, gfc_source_file);
+  now = time (NULL);
+  p = ctime (&now);
+
+  *strchr (p, '\n') = '\0';
+
+  fprintf (module_fp, "GFORTRAN module version '%s' created from %s on %s\n"
+	   "MD5:", MOD_VERSION, gfc_source_file, p);
   fgetpos (module_fp, &md5_pos);
   fputs ("00000000000000000000000000000000 -- "
 	"If you edit this, you'll get what you deserve.\n\n", module_fp);

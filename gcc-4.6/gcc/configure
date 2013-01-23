@@ -681,7 +681,6 @@ gcc_cv_readelf
 gcc_cv_objdump
 ORIGINAL_NM_FOR_TARGET
 gcc_cv_nm
-ORIGINAL_GOLD_FOR_TARGET
 ORIGINAL_LD_FOR_TARGET
 ORIGINAL_PLUGIN_LD_FOR_TARGET
 gcc_cv_ld
@@ -760,9 +759,6 @@ CONFIGURE_SPECS
 CROSS_SYSTEM_HEADER_DIR
 TARGET_SYSTEM_ROOT_DEFINE
 TARGET_SYSTEM_ROOT
-SYSROOT_CFLAGS_FOR_TARGET
-RUNTIME_ROOT_PREFIX_DEFINE
-NATIVE_SYSTEM_HEADER_DIR
 enable_shared
 enable_fixed_point
 enable_decimal_float
@@ -883,8 +879,6 @@ enable_tls
 enable_objc_gc
 with_dwarf2
 enable_shared
-with_native_system_header_dir
-with_runtime_root_prefix
 with_build_sysroot
 with_sysroot
 with_specs
@@ -917,10 +911,8 @@ with_system_zlib
 enable_maintainer_mode
 enable_version_specific_runtime_libs
 with_slibdir
-enable_canonical_prefixes
 enable_plugin
 enable_libquadmath_support
-with_warn_frame_larger_than_extra_text
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1630,8 +1622,6 @@ Optional Features:
   --enable-version-specific-runtime-libs
                           specify that runtime libraries should be
                           installed in a compiler-specific directory
-  --enable-canonical-prefixes
-                          enable or disable prefix canonicalization
   --enable-plugin         enable plugin support
   --disable-libquadmath-support
                           disable libquadmath support for Fortran
@@ -1653,18 +1643,12 @@ Optional Packages:
   --with-as               arrange to use the specified as (full pathname)
   --with-stabs            arrange to use stabs instead of host debug format
   --with-dwarf2           force the default debug format to be DWARF 2
-  --with-native-system-header-dir=dir
-                          use dir as the directory to look for standard
-                          system header files in.  Defaults to /usr/include.
-  --with-runtime-root-prefix=prefix
-                          prepend prefix to paths used by the compiler to
-                          name the dynamic linker and other files used at
-                          runtime.  Defaults to empty (no prefix).
-  --with-build-sysroot=SYSROOT
+  --with-build-sysroot=sysroot
                           use sysroot as the system root during the build
   --with-sysroot=DIR Search for usr/lib, usr/include, et al, within DIR.
   --with-specs=SPECS      add SPECS to driver command-line processing
-  --with-pkgversion=PKG   Use PKG in the version string in place of "GCC"
+  --with-pkgversion=PKG   Use PKG in the version string in place of "Linaro
+                          GCC `cat $srcdir/LINARO-VERSION`"
   --with-bugurl=URL       Direct users to URL to report a bug
   --with-multilib-list    Select multilibs (SH only)
   --with-gnu-ld           assume the C compiler uses GNU ld default=no
@@ -1680,8 +1664,6 @@ Optional Packages:
                           with the compiler
   --with-system-zlib      use installed libz
   --with-slibdir=DIR      shared libraries in DIR [LIBDIR]
-  --with-warn-frame-larger-than-extra-text=TEXT
-                          specifies extra text for frame size warnings
 
 Some influential environment variables:
   CC          C compiler command
@@ -4861,7 +4843,7 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $acx_cv_cc_gcc_supports_ada" >&5
 $as_echo "$acx_cv_cc_gcc_supports_ada" >&6; }
 
-if test x$GNATBIND != xno && test x$GNATMAKE != xno && test x$acx_cv_cc_gcc_supports_ada != xno; then
+if test "x$GNATBIND" != xno && test "x$GNATMAKE" != xno && test x$acx_cv_cc_gcc_supports_ada != xno; then
   have_gnat=yes
 else
   have_gnat=no
@@ -7076,54 +7058,11 @@ fi
 
 
 
-# The use of native_system_header_dir here is for the value (optionally)
-# configured here.  Uses of NATIVE_SYSTEM_HEADER_DIR in this file refer
-# to the make variable defined in Makefile or in target make fragments.
-
-# Check whether --with-native-system-header-dir was given.
-if test "${with_native_system_header_dir+set}" = set; then :
-  withval=$with_native_system_header_dir;
- case ${with_native_system_header_dir} in
- yes|no) as_fn_error "bad value ${withval} given for native system include directory" "$LINENO" 5 ;;
- /*) ;;
- *) as_fn_error "${withval} should be an absolute directory" "$LINENO" 5 ;;
- esac
- native_system_header_dir="${withval}"
-
-else
-  native_system_header_dir=/usr/include
-fi
-
-NATIVE_SYSTEM_HEADER_DIR=$native_system_header_dir
-
-
-
-# Check whether --with-runtime-root-prefix was given.
-if test "${with_runtime_root_prefix+set}" = set; then :
-  withval=$with_runtime_root_prefix;
- case ${with_runtime_root_prefix} in
- yes|no) as_fn_error "bad value ${withval} given for runtime root prefix" "$LINENO" 5 ;;
- /*) ;;
- *) as_fn_error "${withval} should be an absolute directory" "$LINENO" 5 ;;
- esac
- RUNTIME_ROOT_PREFIX_DEFINE="-DRUNTIME_ROOT_PREFIX=\\\"${withval}\\\""
-
-else
-  RUNTIME_ROOT_PREFIX_DEFINE=""
-fi
-
-
-
 
 # Check whether --with-build-sysroot was given.
 if test "${with_build_sysroot+set}" = set; then :
-  withval=$with_build_sysroot; if test x"$withval" != x ; then
-     SYSROOT_CFLAGS_FOR_TARGET="--sysroot=$withval"
-   fi
-else
-  SYSROOT_CFLAGS_FOR_TARGET=
+  withval=$with_build_sysroot;
 fi
-
 
 
 
@@ -7191,7 +7130,7 @@ if test "${with_pkgversion+set}" = set; then :
       *)   PKGVERSION="($withval) " ;;
      esac
 else
-  PKGVERSION="(GCC) "
+  PKGVERSION="(Linaro GCC `cat $srcdir/LINARO-VERSION`) "
 
 fi
 
@@ -14121,22 +14060,7 @@ fi
 
 # Check whether --with-pic was given.
 if test "${with_pic+set}" = set; then :
-  withval=$with_pic; p=${PACKAGE-default}
-    case "$withval" in
-    yes|no) pic_mode="$withval" ;;
-    *)
-      pic_mode=default
-      # Look at the argument we got.  We use all the common list separators.
-      lt_save_ifs="$IFS"; IFS="${IFS}$PATH_SEPARATOR,"
-      for pkg in $withval; do
-	IFS="$lt_save_ifs"
-	if test "X$pkg" = "X$p"; then
-	  pic_mode=yes
-	fi
-      done
-      IFS="$lt_save_ifs"
-      ;;
-    esac
+  withval=$with_pic; pic_mode="$withval"
 else
   pic_mode=default
 fi
@@ -17534,7 +17458,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 17537 "configure"
+#line 17499 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -17640,7 +17564,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 17643 "configure"
+#line 17605 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -21084,21 +21008,6 @@ fi
 fi
 fi
 
-gcc_cv_ld_gold_srcdir=`echo $srcdir | sed -e 's,/gcc$,,'`/gold
-
-if test "${gcc_cv_gold+set}" = set; then :
-
-else
-
-if test -f $gcc_cv_ld_gold_srcdir/configure.ac \
-     && test -f ../gold/Makefile \
-     && test x$build = x$host; then
-	gcc_cv_gold=../gold/ld-new$build_exeext
-else
-        gcc_cv_gold=''
-fi
-fi
-
 ORIGINAL_PLUGIN_LD_FOR_TARGET=$gcc_cv_ld
 PLUGIN_LD=`basename $gcc_cv_ld`
 
@@ -21137,9 +21046,6 @@ case "$ORIGINAL_LD_FOR_TARGET" in
   *) ac_config_files="$ac_config_files collect-ld:exec-tool.in"
  ;;
 esac
-
-ORIGINAL_GOLD_FOR_TARGET=$gcc_cv_gold
-
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking what linker to use" >&5
 $as_echo_n "checking what linker to use... " >&6; }
@@ -25408,7 +25314,7 @@ else
   then gcc_cv_as_gnu_unique_object=yes
 fi
   elif test x$gcc_cv_as != x; then
-    echo '.type foo, @gnu_unique_object' > conftest.s
+    echo '.type foo, '$target_type_format_char'gnu_unique_object' > conftest.s
     if { ac_try='$gcc_cv_as $gcc_cv_as_flags  -o conftest.o conftest.s >&5'
   { { eval echo "\"\$as_me\":${as_lineno-$LINENO}: \"$ac_try\""; } >&5
   (eval $ac_try) 2>&5
@@ -25427,7 +25333,8 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gcc_cv_as_gnu_unique_object" >&5
 $as_echo "$gcc_cv_as_gnu_unique_object" >&6; }
 if test $gcc_cv_as_gnu_unique_object = yes; then
-  # Also check for ld.so support, i.e. glibc 2.11 or higher.
+  # We need to unquote above to to use the definition from config.gcc.
+# Also check for ld.so support, i.e. glibc 2.11 or higher.
    if test x$host = x$build -a x$host = x$target &&
        ldd --version 2>/dev/null &&
        glibcver=`ldd --version 2>/dev/null | sed 's/.* //;q'`; then
@@ -25710,7 +25617,9 @@ if test "${gcc_cv_ld_no_dot_syms+set}" = set; then :
   $as_echo_n "(cached) " >&6
 else
   gcc_cv_ld_no_dot_syms=no
-    if test $in_tree_ld = yes ; then
+    if test x"$ld_is_gold" = xyes; then
+      gcc_cv_ld_no_dot_syms=yes
+    elif test $in_tree_ld = yes ; then
       if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 16 -o "$gcc_cv_gld_major_version" -gt 2; then
         gcc_cv_ld_no_dot_syms=yes
       fi
@@ -25754,7 +25663,9 @@ if test "${gcc_cv_ld_large_toc+set}" = set; then :
   $as_echo_n "(cached) " >&6
 else
   gcc_cv_ld_large_toc=no
-    if test $in_tree_ld = yes ; then
+    if test x"$ld_is_gold" = xyes; then
+      gcc_cv_ld_large_toc=yes
+    elif test $in_tree_ld = yes ; then
       if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 21 -o "$gcc_cv_gld_major_version" -gt 2; then
         gcc_cv_ld_large_toc=yes
       fi
@@ -25903,14 +25814,14 @@ if test x$host != x$target || test "x$TARGET_SYSTEM_ROOT" != x; then
   elif test "x$with_sysroot" = x; then
     target_header_dir="${exec_prefix}/${target_noncanonical}/sys-include"
   elif test "x$with_build_sysroot" != "x"; then
-    target_header_dir="${with_build_sysroot}${native_system_header_dir}"
+    target_header_dir="${with_build_sysroot}/usr/include"
   elif test "x$with_sysroot" = xyes; then
-    target_header_dir="${exec_prefix}/${target_noncanonical}/sys-root${native_system_header_dir}"
+    target_header_dir="${exec_prefix}/${target_noncanonical}/sys-root/usr/include"
   else
-    target_header_dir="${with_sysroot}${native_system_header_dir}"
+    target_header_dir="${with_sysroot}/usr/include"
   fi
 else
-  target_header_dir=${native_system_header_dir}
+  target_header_dir=/usr/include
 fi
 
 # Test for stack protector support in target C library.
@@ -26308,21 +26219,6 @@ fi
 
 
 
-# Set default prefix canonicalization.
-
-# Check whether --enable-canonical-prefixes was given.
-if test "${enable_canonical_prefixes+set}" = set; then :
-  enableval=$enable_canonical_prefixes;
-else
-  enable_canonical_prefixes=yes
-fi
-
-if test x"$enable_canonical_prefixes" = xyes; then
-
-$as_echo "#define ENABLE_CANONICAL_PREFIXES 1" >>confdefs.h
-
-fi
-
 # Substitute configuration variables
 
 
@@ -26619,24 +26515,6 @@ if test "${ENABLE_LIBQUADMATH_SUPPORT}" != "no" ; then
 $as_echo "#define ENABLE_LIBQUADMATH_SUPPORT 1" >>confdefs.h
 
 fi
-
-
-warn_frame_larger_than_extra_text=
-
-# Check whether --with-warn-frame-larger-than-extra-text was given.
-if test "${with_warn_frame_larger_than_extra_text+set}" = set; then :
-  withval=$with_warn_frame_larger_than_extra_text; case "${withval}" in
-yes)	as_fn_error "bad value ${withval} given for frame size warning text" "$LINENO" 5 ;;
-no)	;;
-*)	warn_frame_larger_than_extra_text="$withval" ;;
-esac
-fi
-
-
-cat >>confdefs.h <<_ACEOF
-#define WARN_FRAME_LARGER_THAN_EXTRA_TEXT "$warn_frame_larger_than_extra_text"
-_ACEOF
-
 
 
 # Configure the subdirectories

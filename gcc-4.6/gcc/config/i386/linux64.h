@@ -1,5 +1,5 @@
 /* Definitions for AMD x86-64 running Linux-based GNU systems with ELF format.
-   Copyright (C) 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Copyright (C) 2001, 2002, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013
    Free Software Foundation, Inc.
    Contributed by Jan Hubicka <jh@suse.cz>, based on linux.h.
 
@@ -46,7 +46,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef CC1_SPEC
 #define CC1_SPEC \
   LINUX_OR_ANDROID_CC (LINUX_TARGET_CC1_SPEC, \
-		       LINUX_TARGET_CC1_SPEC " " ANDROID_CC1_SPEC)
+		       LINUX_TARGET_CC1_SPEC " " ANDROID_CC1_SPEC("-fPIC"))
 
 /* The svr4 ABI for the i386 says that records and unions are returned
    in memory.  In the 64bit compilation we will turn this flag off in
@@ -67,11 +67,8 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    When the -shared link option is used a final link is not being
    done.  */
 
-#ifndef RUNTIME_ROOT_PREFIX
-#define RUNTIME_ROOT_PREFIX ""
-#endif
-#define GLIBC_DYNAMIC_LINKER32 RUNTIME_ROOT_PREFIX "/lib/ld-linux.so.2"
-#define GLIBC_DYNAMIC_LINKER64 RUNTIME_ROOT_PREFIX "/lib64/ld-linux-x86-64.so.2"
+#define GLIBC_DYNAMIC_LINKER32 "/lib/ld-linux.so.2"
+#define GLIBC_DYNAMIC_LINKER64 "/lib64/ld-linux-x86-64.so.2"
 
 #if TARGET_64BIT_DEFAULT
 #define SPEC_32 "m32"
@@ -103,21 +100,12 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef  LIB_SPEC
 #define LIB_SPEC \
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_LIB_SPEC, \
-		       GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
+		       CRYSTAX_LIB_SPEC " " GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
 
 #undef  STARTFILE_SPEC
 #define STARTFILE_SPEC \
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_STARTFILE_SPEC, \
 		       ANDROID_STARTFILE_SPEC)
-
-/* These may be provided by config/linux-grtev2.h.  */
-#ifndef LINUX_GRTE_EXTRA_SPECS
-#define LINUX_GRTE_EXTRA_SPECS
-#endif
-
-#undef  SUBTARGET_EXTRA_SPECS
-#define SUBTARGET_EXTRA_SPECS \
-  LINUX_GRTE_EXTRA_SPECS
 
 /* Similar to standard Linux, but adding -ffast-math support.  */
 #define LINUX_TARGET_ENDFILE_SPEC \

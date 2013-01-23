@@ -522,10 +522,6 @@ get_value_from_alignment (tree expr)
     val = bit_value_binop (PLUS_EXPR, TREE_TYPE (expr),
 			   TREE_OPERAND (base, 0), TREE_OPERAND (base, 1));
   else if (base
-	   /* ???  While function decls have DECL_ALIGN their addresses
-	      may encode extra information in the lower bits on some
-	      targets (PR47239).  Simply punt for function decls for now.  */
-	   && TREE_CODE (base) != FUNCTION_DECL
 	   && ((align = get_object_alignment (base, BIGGEST_ALIGNMENT))
 		> BITS_PER_UNIT))
     {
@@ -1279,7 +1275,10 @@ ccp_fold (gimple stmt)
 
     case GIMPLE_CALL:
       {
-	tree fn = valueize_op (gimple_call_fn (stmt));
+	tree fn = gimple_call_fn (stmt);
+	if (!fn)
+	  return NULL_TREE;
+	fn = valueize_op (fn);
 	if (TREE_CODE (fn) == ADDR_EXPR
 	    && TREE_CODE (TREE_OPERAND (fn, 0)) == FUNCTION_DECL
 	    && DECL_BUILT_IN (TREE_OPERAND (fn, 0)))
@@ -1364,6 +1363,10 @@ get_base_constructor (tree base, HOST_WIDE_INT *bit_offset)
       if (!DECL_INITIAL (base)
 	  && (TREE_STATIC (base) || DECL_EXTERNAL (base)))
         return error_mark_node;
+      /* Do not return an error_mark_node DECL_INITIAL.  LTO uses this
+	 as special marker (_not_ zero ...) for its own purposes.  */
+      if (DECL_INITIAL (base) == error_mark_node)
+	return NULL_TREE;
       return DECL_INITIAL (base);
 
     case ARRAY_REF:
@@ -2316,6 +2319,11 @@ ccp_fold_stmt (gimple_stmt_iterator *gsi)
 	    gcc_assert (res);
 	    return true;
 	  }
+
+	/* Internal calls provide no argument types, so the extra laxity
+	   for normal calls does not apply.  */
+	if (gimple_call_internal_p (stmt))
+	  return false;
 
 	/* Propagate into the call arguments.  Compared to replace_uses_in
 	   this can use the argument slot types for type verification

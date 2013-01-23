@@ -734,7 +734,7 @@ struct rtl_opt_pass pass_ud_rtl_dce =
 {
  {
   RTL_PASS,
-  "ud_dce",                             /* name */
+  "ud dce",                             /* name */
   gate_ud_dce,                          /* gate */
   rest_of_handle_ud_dce,                /* execute */
   NULL,                                 /* sub */
@@ -1086,7 +1086,7 @@ struct rtl_opt_pass pass_fast_rtl_dce =
 {
  {
   RTL_PASS,
-  "rtl_dce",                            /* name */
+  "rtl dce",                            /* name */
   gate_fast_dce,                        /* gate */
   rest_of_handle_fast_dce,              /* execute */
   NULL,                                 /* sub */

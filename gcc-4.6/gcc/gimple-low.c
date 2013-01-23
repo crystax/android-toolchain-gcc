@@ -208,20 +208,24 @@ struct gimple_opt_pass pass_lower_cf =
 };
 
 
-
 /* Verify if the type of the argument matches that of the function
    declaration.  If we cannot verify this or there is a mismatch,
    return false.  */
 
-static bool
-gimple_check_call_args (gimple stmt, tree fndecl)
+bool
+gimple_check_call_args (gimple stmt)
 {
-  tree parms, p;
+  tree fndecl, parms, p;
   unsigned int i, nargs;
+
+  /* Calls to internal functions always match their signature.  */
+  if (gimple_call_internal_p (stmt))
+    return true;
 
   nargs = gimple_call_num_args (stmt);
 
   /* Get argument types for verification.  */
+  fndecl = gimple_call_fndecl (stmt);
   parms = NULL_TREE;
   if (fndecl)
     parms = TYPE_ARG_TYPES (TREE_TYPE (fndecl));
@@ -273,25 +277,6 @@ gimple_check_call_args (gimple stmt, tree fndecl)
   return true;
 }
 
-/* Verify if the type of the argument and lhs of CALL_STMT matches
-   that of the function declaration CALLEE.
-   If we cannot verify this or there is a mismatch, return false.  */
-
-bool
-gimple_check_call_matching_types (gimple call_stmt, tree callee)
-{
-  tree lhs;
-
-  if ((DECL_RESULT (callee)
-       && !DECL_BY_REFERENCE (DECL_RESULT (callee))
-       && (lhs = gimple_call_lhs (call_stmt)) != NULL_TREE
-       && !useless_type_conversion_p (TREE_TYPE (DECL_RESULT (callee)),
-                                      TREE_TYPE (lhs))
-       && !fold_convertible_p (TREE_TYPE (DECL_RESULT (callee)), lhs))
-      || !gimple_check_call_args (call_stmt, callee))
-    return false;
-  return true;
-}
 
 /* Lower sequence SEQ.  Unlike gimplification the statements are not relowered
    when they are changed -- if this has to be done, the lowering routine must

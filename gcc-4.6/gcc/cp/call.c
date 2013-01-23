@@ -39,8 +39,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "convert.h"
 #include "langhooks.h"
 #include "c-family/c-objc.h"
-#include "timevar.h"
-#include "tree-threadsafe-analyze.h"
 
 /* The various kinds of conversion.  */
 
@@ -208,8 +206,6 @@ static conversion *direct_reference_binding (tree, conversion *);
 static bool promoted_arithmetic_type_p (tree);
 static conversion *conditional_conversion (tree, tree);
 static char *name_as_c_string (tree, tree, bool *);
-static void find_const_memfunc_with_identical_prototype (tree,
-                                                         struct z_candidate *);
 static tree prep_operand (tree);
 static void add_candidates (tree, tree, const VEC(tree,gc) *, tree, tree, bool,
 			    tree, tree, int, struct z_candidate **);
@@ -1228,7 +1224,7 @@ reference_compatible_p (tree t1, tree t2)
    converted to T as in [over.match.ref].  */
 
 static conversion *
-convert_class_to_reference_1 (tree reference_type, tree s, tree expr, int flags)
+convert_class_to_reference (tree reference_type, tree s, tree expr, int flags)
 {
   tree conversions;
   tree first_arg;
@@ -1362,18 +1358,6 @@ convert_class_to_reference_1 (tree reference_type, tree s, tree expr, int flags)
   cand->second_conv = merge_conversion_sequences (conv, cand->second_conv);
 
   return cand->second_conv;
-}
-
-/* Wrapper for above.  */
-
-static conversion *
-convert_class_to_reference (tree reference_type, tree s, tree expr, int flags)
-{
-  conversion *ret;
-  bool subtime = timevar_cond_start (TV_OVERLOAD);
-  ret = convert_class_to_reference_1 (reference_type, s, expr, flags);
-  timevar_cond_stop (TV_OVERLOAD, subtime);
-  return ret;
 }
 
 /* A reference of the indicated TYPE is being bound directly to the
@@ -3453,32 +3437,20 @@ build_user_type_conversion_1 (tree totype, tree expr, int flags)
   return cand;
 }
 
-/* Wrapper for above. */
-
 tree
 build_user_type_conversion (tree totype, tree expr, int flags)
 {
-  struct z_candidate *cand;
-  tree ret;
-
-  timevar_start (TV_OVERLOAD);
-  cand = build_user_type_conversion_1 (totype, expr, flags);
+  struct z_candidate *cand
+    = build_user_type_conversion_1 (totype, expr, flags);
 
   if (cand)
     {
       if (cand->second_conv->kind == ck_ambig)
-	ret = error_mark_node;
-      else
-        {
-          expr = convert_like (cand->second_conv, expr, tf_warning_or_error);
-          ret = convert_from_reference (expr);
-        }
+	return error_mark_node;
+      expr = convert_like (cand->second_conv, expr, tf_warning_or_error);
+      return convert_from_reference (expr);
     }
-  else
-    ret = NULL_TREE;
-
-  timevar_stop (TV_OVERLOAD);
-  return ret;
+  return NULL_TREE;
 }
 
 /* Subroutine of convert_nontype_argument.
@@ -3593,13 +3565,8 @@ perform_overload_resolution (tree fn,
 			     bool *any_viable_p)
 {
   struct z_candidate *cand;
-  tree explicit_targs;
-  int template_only;
-
-  bool subtime = timevar_cond_start (TV_OVERLOAD);
-
-  explicit_targs = NULL_TREE;
-  template_only = 0;
+  tree explicit_targs = NULL_TREE;
+  int template_only = 0;
 
   *candidates = NULL;
   *any_viable_p = true;
@@ -3626,12 +3593,10 @@ perform_overload_resolution (tree fn,
 		  candidates);
 
   *candidates = splice_viable (*candidates, pedantic, any_viable_p);
-  if (*any_viable_p)
-    cand = tourney (*candidates);
-  else
-    cand = NULL;
+  if (!*any_viable_p)
+    return NULL;
 
-  timevar_cond_stop (TV_OVERLOAD, subtime);
+  cand = tourney (*candidates);
   return cand;
 }
 
@@ -3712,16 +3677,7 @@ build_new_function_call (tree fn, VEC(tree,gc) **args, bool koenig_p,
       result = error_mark_node;
     }
   else
-    {
-      int flags = LOOKUP_NORMAL;
-      /* If fn is template_id_expr, the call has explicit template arguments
-         (e.g. func<int>(5)), communicate this info to build_over_call
-         through flags so that later we can use it to decide whether to warn
-         about peculiar null pointer conversion.  */
-      if (TREE_CODE (fn) == TEMPLATE_ID_EXPR)
-        flags |= LOOKUP_EXPLICIT_TMPL_ARGS;
-      result = build_over_call (cand, flags, complain);
-    }
+    result = build_over_call (cand, LOOKUP_NORMAL, complain);
 
   /* Free all the conversions we allocated.  */
   obstack_free (&conversion_obstack, p);
@@ -3830,8 +3786,8 @@ build_operator_new_call (tree fnname, VEC(tree,gc) **args,
 
 /* Build a new call to operator().  This may change ARGS.  */
 
-static tree
-build_op_call_1 (tree obj, VEC(tree,gc) **args, tsubst_flags_t complain)
+tree
+build_op_call (tree obj, VEC(tree,gc) **args, tsubst_flags_t complain)
 {
   struct z_candidate *candidates = 0, *cand;
   tree fns, convs, first_mem_arg = NULL_TREE;
@@ -3960,19 +3916,6 @@ build_op_call_1 (tree obj, VEC(tree,gc) **args, tsubst_flags_t complain)
   obstack_free (&conversion_obstack, p);
 
   return result;
-}
-
-/* Wrapper for above.  */
-
-tree
-build_op_call (tree obj, VEC(tree,gc) **args, tsubst_flags_t complain)
-{
-  tree ret;
-  bool subtime;
-  subtime = timevar_cond_start (TV_OVERLOAD);
-  ret = build_op_call_1 (obj, args, complain);
-  timevar_cond_stop (TV_OVERLOAD, subtime);
-  return ret;
 }
 
 static void
@@ -4112,9 +4055,9 @@ conditional_conversion (tree e1, tree e2)
 /* Implement [expr.cond].  ARG1, ARG2, and ARG3 are the three
    arguments to the conditional expression.  */
 
-static tree
-build_conditional_expr_1 (tree arg1, tree arg2, tree arg3,
-                          tsubst_flags_t complain)
+tree
+build_conditional_expr (tree arg1, tree arg2, tree arg3,
+                        tsubst_flags_t complain)
 {
   tree arg2_type;
   tree arg3_type;
@@ -4535,19 +4478,6 @@ build_conditional_expr_1 (tree arg1, tree arg2, tree arg3,
   return result;
 }
 
-/* Wrapper for above.  */
-
-tree
-build_conditional_expr (tree arg1, tree arg2, tree arg3,
-                        tsubst_flags_t complain)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_OVERLOAD);
-  ret = build_conditional_expr_1 (arg1, arg2, arg3, complain);
-  timevar_cond_stop (TV_OVERLOAD, subtime);
-  return ret;
-}
-
 /* OPERAND is an operand to an expression.  Perform necessary steps
    required before using it.  If OPERAND is NULL_TREE, NULL_TREE is
    returned.  */
@@ -4716,8 +4646,8 @@ avoid_sign_compare_warnings (tree orig_arg, tree arg)
     TREE_NO_WARNING (arg) = 1;
 }
 
-static tree
-build_new_op_1 (enum tree_code code, int flags, tree arg1, tree arg2, tree arg3,
+tree
+build_new_op (enum tree_code code, int flags, tree arg1, tree arg2, tree arg3,
 	      bool *overloaded_p, tsubst_flags_t complain)
 {
   tree orig_arg1 = arg1;
@@ -4884,8 +4814,8 @@ build_new_op_1 (enum tree_code code, int flags, tree arg1, tree arg2, tree arg3,
 	    code = PREINCREMENT_EXPR;
 	  else
 	    code = PREDECREMENT_EXPR;
-	  result = build_new_op_1 (code, flags, arg1, NULL_TREE, NULL_TREE,
-				   overloaded_p, complain);
+	  result = build_new_op (code, flags, arg1, NULL_TREE, NULL_TREE,
+				 overloaded_p, complain);
 	  break;
 
 	  /* The caller will deal with these.  */
@@ -4938,20 +4868,7 @@ build_new_op_1 (enum tree_code code, int flags, tree arg1, tree arg2, tree arg3,
 	  if (resolve_args (arglist) == NULL)
 	    result = error_mark_node;
 	  else
-            {
-              result = build_over_call (cand, LOOKUP_NORMAL, complain);
-	      /* If thread safety check is enabled and FN is not a const
-		 member function, try to see if there is a const overload in
-		 the candidates list (if we haven't done so already).  */
-	      if (warn_thread_safety
-                  && DECL_FUNCTION_MEMBER_P (cand->fn)
-		  && !DECL_CONST_MEMFUNC_P (cand->fn)
-		  && (!DECL_ATTRIBUTES (cand->fn)
-                      || !lookup_attribute ("has_const_overload",
-                                            DECL_ATTRIBUTES (cand->fn))))
-		find_const_memfunc_with_identical_prototype (cand->fn,
-                                                             candidates);
-            }
+	    result = build_over_call (cand, LOOKUP_NORMAL, complain);
 	}
       else
 	{
@@ -5100,19 +5017,6 @@ build_new_op_1 (enum tree_code code, int flags, tree arg1, tree arg2, tree arg3,
       gcc_unreachable ();
     }
   return NULL_TREE;
-}
-
-/* Wrapper for above.  */
-
-tree
-build_new_op (enum tree_code code, int flags, tree arg1, tree arg2, tree arg3,
-	      bool *overloaded_p, tsubst_flags_t complain)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_OVERLOAD);
-  ret = build_new_op_1 (code, flags, arg1, arg2, arg3, overloaded_p, complain);
-  timevar_cond_stop (TV_OVERLOAD, subtime);
-  return ret;
 }
 
 /* Returns true iff T, an element of an OVERLOAD chain, is a usual
@@ -5264,22 +5168,8 @@ build_op_delete_call (enum tree_code code, tree addr, tree size,
 	       usual deallocation function."
 
 	       So (void*) beats (void*, size_t).  */
-            /* If type is not void, pick (void*, size_t) version (which comes
-               first).  */
-	    if (!flag_sized_delete || TREE_CODE (type) == VOID_TYPE )
-              {
-                /* If -fsized-delete is not passed or if a void * is deleted,
-                   prefer delete (void *) version.  */
-                if (FUNCTION_ARG_CHAIN (fn) == void_list_node)
-                  break;
-              }
-            else
-              {
-                /* If -fsized-delete is passed and it is not a void *,
-                   prefer delete (void *, size_t) version.  */
-                if (FUNCTION_ARG_CHAIN (fn) != void_list_node)
-                  break;
-              }
+	    if (FUNCTION_ARG_CHAIN (fn) == void_list_node)
+	      break;
 	  }
       }
 
@@ -5415,16 +5305,10 @@ conversion_null_warnings (tree totype, tree expr, tree fn, int argnum)
     }
 
   /* Issue warnings if "false" is converted to a NULL pointer */
-  else if (expr == boolean_false_node && POINTER_TYPE_P (t))
-    {
-      if (fn)
-	warning_at (input_location, OPT_Wconversion_null,
-		    "converting %<false%> to pointer type for argument %P "
-		    "of %qD", argnum, fn);
-      else
-	warning_at (input_location, OPT_Wconversion_null,
-		    "converting %<false%> to pointer type %qT", t);
-    }
+  else if (expr == boolean_false_node && fn && POINTER_TYPE_P (t))
+    warning_at (input_location, OPT_Wconversion_null,
+		"converting %<false%> to pointer type for argument %P of %qD",
+		argnum, fn);
 }
 
 /* Perform the conversions in CONVS on the expression EXPR.  FN and
@@ -6336,7 +6220,6 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
     {
       tree type = TREE_VALUE (parm);
       tree arg = VEC_index (tree, args, arg_index);
-      bool conversion_warning = true;
 
       conv = convs[i];
 
@@ -6345,32 +6228,6 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	  && COMPLETE_TYPE_P (complete_type (type))
 	  && !TREE_ADDRESSABLE (type))
 	conv = conv->u.next;
-
-      /* If the argument is NULL and used to (implicitly) instantiate a
-         template function (and bind one of the template arguments to
-         the type of 'long int'), we don't want to warn about passing NULL
-         to non-pointer argument.
-         For example, if we have this template function:
-
-           template<typename T> void func(T x) {}
-
-         we want to warn (when -Wconversion is enabled) in this case:
-
-           void foo() {
-             func<int>(NULL);
-           }
-
-         but not in this case:
-
-           void foo() {
-             func(NULL);
-           }
-      */
-      if (arg == null_node
-          && DECL_TEMPLATE_INFO (fn)
-          && cand->template_decl
-          && !(flags & LOOKUP_EXPLICIT_TMPL_ARGS))
-        conversion_warning = false;
 
       /* Warn about initializer_list deduction that isn't currently in the
 	 working draft.  */
@@ -6402,10 +6259,7 @@ build_over_call (struct z_candidate *cand, int flags, tsubst_flags_t complain)
 	    }
 	}
 
-      val = convert_like_with_context (conv, arg, fn, i-is_method,
-	                               conversion_warning
-				       ? complain
-				       : complain & (~tf_warning));
+      val = convert_like_with_context (conv, arg, fn, i-is_method, complain);
 
       val = convert_for_arg_passing (type, val);
       if (val == error_mark_node)
@@ -6883,61 +6737,14 @@ name_as_c_string (tree name, tree type, bool *free_p)
   return pretty_name;
 }
 
-/* Given a decl FN which is a non-const member function, try to find if
-   there is another candidate that is a const member function with the same
-   prototype (i.e. parameter list) as FN. And if found, attach an internal
-   attribute "has_const_overload" to FN.  */
-
-static void
-find_const_memfunc_with_identical_prototype (tree fn,
-					     struct z_candidate *candidates)
-{
-  bool find_const_overload = false;
-  struct z_candidate *cand;
-
-  for (cand = candidates; cand; cand = cand->next)
-    {
-      tree candfunc = cand->fn;
-      tree t1, t2;
-
-      /* candfunc (or cand->fn) can be an IDENTIFIER_NODE if the candidate
-         is a builtin (see the add_candidate call in build_builtin_candidate).
-         Since it's not a user-defined overload, just skip it.  */
-      if (TREE_CODE (candfunc) != FUNCTION_DECL)
-        continue;
-
-      /* Skip FN itself and candidates that are not const.  */
-      if (candfunc == fn || !DECL_CONST_MEMFUNC_P (candfunc))
-	continue;
-
-      /* Compare the parameter lists of FN and CANDFUNC.  */
-      for (t1 = TREE_CHAIN (TYPE_ARG_TYPES (TREE_TYPE (fn))),
-	     t2 = TREE_CHAIN (TYPE_ARG_TYPES (TREE_TYPE (candfunc)));
-	   t1 && t2;
-	   t1 = TREE_CHAIN (t1), t2 = TREE_CHAIN (t2))
-	if (t1 != t2)
-	  break;
-
-      if (!t1 && !t2)
-	{
-	  find_const_overload = true;
-	  break;
-	}
-    }
-
-  if (find_const_overload)
-    DECL_ATTRIBUTES (fn) = tree_cons (get_identifier ("has_const_overload"),
-				      NULL_TREE, DECL_ATTRIBUTES (fn));
-}
-
 /* Build a call to "INSTANCE.FN (ARGS)".  If FN_P is non-NULL, it will
    be set, upon return, to the function called.  ARGS may be NULL.
    This may change ARGS.  */
 
-static tree
-build_new_method_call_1 (tree instance, tree fns, VEC(tree,gc) **args,
-		         tree conversion_path, int flags,
-		         tree *fn_p, tsubst_flags_t complain)
+tree
+build_new_method_call (tree instance, tree fns, VEC(tree,gc) **args,
+		       tree conversion_path, int flags,
+		       tree *fn_p, tsubst_flags_t complain)
 {
   struct z_candidate *candidates = 0, *cand;
   tree explicit_targs = NULL_TREE;
@@ -7168,10 +6975,7 @@ build_new_method_call_1 (tree instance, tree fns, VEC(tree,gc) **args,
 	  if (TREE_CODE (TREE_TYPE (fn)) == METHOD_TYPE
 	      && is_dummy_object (instance_ptr))
 	    {
-              /* If the call appears in the argument list of a lock
-                 annotation attribute, don't emit an error. Just return
-                 the error_mark_node.  */
-	      if ((complain & tf_error) && !parsing_lock_attribute)
+	      if (complain & tf_error)
 		error ("cannot call member function %qD without object",
 		       fn);
 	      call = error_mark_node;
@@ -7181,8 +6985,6 @@ build_new_method_call_1 (tree instance, tree fns, VEC(tree,gc) **args,
 	      if (DECL_VINDEX (fn) && ! (flags & LOOKUP_NONVIRTUAL)
 		  && resolves_to_fixed_type_p (instance, 0))
 		flags |= LOOKUP_NONVIRTUAL;
-              if (explicit_targs)
-                flags |= LOOKUP_EXPLICIT_TMPL_ARGS;
 	      /* Now we know what function is being called.  */
 	      if (fn_p)
 		*fn_p = fn;
@@ -7210,15 +7012,6 @@ build_new_method_call_1 (tree instance, tree fns, VEC(tree,gc) **args,
 		   "operator delete(~X(f()))" (rather than generating
 		   "t = f(), ~X(t), operator delete (t)").  */
 		call = build_nop (void_type_node, call);
-	      /* If thread safety check is enabled and FN is not a const
-		 member function, try to see if there is a const overload in
-		 the candidates list (if we haven't done so already).  */
-	      if (warn_thread_safety
-		  && !DECL_CONST_MEMFUNC_P (fn)
-		  && (!DECL_ATTRIBUTES (fn)
-                      || !lookup_attribute ("has_const_overload",
-                                            DECL_ATTRIBUTES (fn))))
-		find_const_memfunc_with_identical_prototype (fn, candidates);
 	    }
 	}
     }
@@ -7253,21 +7046,6 @@ build_new_method_call_1 (tree instance, tree fns, VEC(tree,gc) **args,
     release_tree_vector (orig_args);
 
   return call;
-}
-
-/* Wrapper for above.  */
-
-tree
-build_new_method_call (tree instance, tree fns, VEC(tree,gc) **args,
-		       tree conversion_path, int flags,
-		       tree *fn_p, tsubst_flags_t complain)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_OVERLOAD);
-  ret = build_new_method_call_1 (instance, fns, args, conversion_path, flags,
-                                 fn_p, complain);
-  timevar_cond_stop (TV_OVERLOAD, subtime);
-  return ret;
 }
 
 /* Returns true iff standard conversion sequence ICS1 is a proper
@@ -8291,7 +8069,8 @@ perform_implicit_conversion_flags (tree type, tree expr, tsubst_flags_t complain
 	}
       expr = error_mark_node;
     }
-  else if (processing_template_decl)
+  else if (processing_template_decl
+	   && !(SCALAR_TYPE_P (type) && SCALAR_TYPE_P (TREE_TYPE (expr))))
     {
       /* In a template, we are only concerned about determining the
 	 type of non-dependent expressions, so we do not have to

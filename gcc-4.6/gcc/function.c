@@ -1,7 +1,7 @@
 /* Expands front end tree to back end RTL for GCC.
    Copyright (C) 1987, 1988, 1989, 1991, 1992, 1993, 1994, 1995, 1996, 1997,
    1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
-   2010, 2011  Free Software Foundation, Inc.
+   2010, 2011, 2012 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -64,7 +64,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "df.h"
 #include "timevar.h"
 #include "vecprim.h"
-#include "l-ipo.h"
 
 /* So we can assign to cfun in this file.  */
 #undef cfun
@@ -1748,7 +1747,7 @@ instantiate_virtual_regs_in_insn (rtx insn)
       if (!check_asm_operands (PATTERN (insn)))
 	{
 	  error_for_asm (insn, "impossible constraint in %<asm%>");
-	  delete_insn (insn);
+	  delete_insn_and_edges (insn);
 	}
     }
   else
@@ -4351,34 +4350,10 @@ pop_cfun (void)
 }
 
 /* Return value of funcdef and increase it.  */
-
 int
 get_next_funcdef_no (void)
 {
   return funcdef_no++;
-}
-
-/* Restore funcdef_no to FN.  */
-
-void
-set_funcdef_no (int fn)
-{
-  funcdef_no = fn;
-}
-
-/* Reset the funcdef number.  */
-
-void
-reset_funcdef_no (void)
-{
-  funcdef_no = 0;
-}
-
-/* Return value of funcdef.  */
-int
-get_last_funcdef_no (void)
-{
-  return funcdef_no;
 }
 
 /* Allocate a function structure for FNDECL and set its contents
@@ -4418,7 +4393,6 @@ allocate_struct_function (tree fndecl, bool abstract_p)
       DECL_STRUCT_FUNCTION (fndecl) = cfun;
       cfun->decl = fndecl;
       current_function_funcdef_no = get_next_funcdef_no ();
-      cfun->module_id = current_module_id;
 
       result = DECL_RESULT (fndecl);
       if (!abstract_p && aggregate_value_p (result, fndecl))

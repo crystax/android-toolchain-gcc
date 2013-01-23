@@ -38,6 +38,19 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define _REENTRANT 1
 #endif
 
+/* The following should normally be in a different header file,
+ * but I couldn't find the right location. The point of the macro
+ * definition below is to prevent libsupc++ and libstdc++ to reference
+ * weak symbols in their static C++ constructors. Such code crashes
+ * when a shared object linked statically to these libraries is
+ * loaded on Android 2.1 (Eclair) and older platform releases, due
+ * to a dynamic linker bug.
+ */
+#ifdef __ANDROID__
+#undef GTHREAD_USE_WEAK
+#define GTHREAD_USE_WEAK 0
+#endif
+
 #include <pthread.h>
 #include <unistd.h>
 
@@ -239,16 +252,15 @@ __gthread_active_p (void)
 static inline int
 __gthread_active_p (void)
 {
-  static void *const __gthread_active_ptr
-    = __extension__ (void *) &__gthrw_(
 /* Android's C library does not provide pthread_cancel, check for
    `pthread_create' instead.  */
 #ifndef __BIONIC__
-				       pthread_cancel
+  static void *const __gthread_active_ptr
+    = __extension__ (void *) &__gthrw_(pthread_cancel);
 #else
-				       pthread_create
+  static void *const __gthread_active_ptr
+    = __extension__ (void *) &__gthrw_(pthread_create);
 #endif
-				       );
   return __gthread_active_ptr != 0;
 }
 

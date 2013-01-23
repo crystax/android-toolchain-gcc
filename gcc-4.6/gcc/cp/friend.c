@@ -26,7 +26,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "cp-tree.h"
 #include "flags.h"
 #include "output.h"
-#include "cgraph.h"
 
 /* Friend data structures are described in cp-tree.h.  */
 

@@ -502,7 +502,6 @@ static tree
 lookup_tmp_var (tree val, bool is_formal)
 {
   tree ret;
-  bool tmp_reused = false;
 
   /* If not optimizing, never really reuse a temporary.  local-alloc
      won't allocate any variable that is used in more than one basic
@@ -532,50 +531,7 @@ lookup_tmp_var (tree val, bool is_formal)
 	{
 	  elt_p = (elt_t *) *slot;
           ret = elt_p->temp;
-          tmp_reused = true;
 	}
-    }
-
-  /* If the original val is a pointer (to a shared memory location) with
-     either the "point_to_guarded_by" or "point_to_guarded" attribute,
-     we need to copy the attribute to the tmp variable. Note that we don't
-     need to do this for non-pointer variables because, after transformation,
-     the original variable would still be accessed the same way it was
-     accessed in the original code as shown in the following example:
-
-       Original code:                            Transformed code:
-
-       gx = gy + 1; // read gy, write gx         gy.0 = gy;   // read gy
-                                                 gx.1 = gy.0 + 1;
-                                                 gx = gx.1;   // write gx
-
-     On the other hand, if the original variable is a pointer, it
-     will not be accessed the same way as before:
-
-       Original code:                             Transformed code:
-
-       *gx = a + 5; // gx is read and             gx.1 = gx; // gx is read but
-                    // dereferenced                          // not deferenced
-                                                  *gx.1 = a + 5;
-  */
-  if (!tmp_reused && DECL_P (val) && POINTER_TYPE_P (TREE_TYPE (val)))
-    {
-      tree attr = lookup_attribute ("point_to_guarded_by",
-                                    DECL_ATTRIBUTES (val));
-      if (!attr)
-        attr = lookup_attribute ("point_to_guarded", DECL_ATTRIBUTES (val));
-
-      if (attr)
-        {
-          DECL_ATTRIBUTES (ret) = build_tree_list (TREE_PURPOSE (attr),
-                                                   TREE_VALUE (attr));
-          /* When detecting an issue later in the thread safety analysis
-             phase, we would like to print out the original variable name
-             (instead of the tmp variable name). So stick the original
-             variable's decl in the debug expr.  */
-          DECL_DEBUG_EXPR_IS_FROM (ret) = 1;
-          SET_DECL_DEBUG_EXPR (ret, val);
-        }
     }
 
   return ret;
@@ -3755,9 +3711,8 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
     case ARRAY_TYPE:
       {
 	struct gimplify_init_ctor_preeval_data preeval_data;
-	HOST_WIDE_INT num_type_elements, num_ctor_elements;
-	HOST_WIDE_INT num_nonzero_elements;
-	bool cleared, valid_const_initializer;
+	HOST_WIDE_INT num_ctor_elements, num_nonzero_elements;
+	bool cleared, complete_p, valid_const_initializer;
 
 	/* Aggregate types must lower constructors to initialization of
 	   individual elements.  The exception is that a CONSTRUCTOR node
@@ -3774,7 +3729,7 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	   can only do so if it known to be a valid constant initializer.  */
 	valid_const_initializer
 	  = categorize_ctor_elements (ctor, &num_nonzero_elements,
-				      &num_ctor_elements, &cleared);
+				      &num_ctor_elements, &complete_p);
 
 	/* If a const aggregate variable is being initialized, then it
 	   should never be a lose to promote the variable to be static.  */
@@ -3812,26 +3767,29 @@ gimplify_init_constructor (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p,
 	   parts in, then generate code for the non-constant parts.  */
 	/* TODO.  There's code in cp/typeck.c to do this.  */
 
-	num_type_elements = count_type_elements (type, true);
+	if (int_size_in_bytes (TREE_TYPE (ctor)) < 0)
+	  /* store_constructor will ignore the clearing of variable-sized
+	     objects.  Initializers for such objects must explicitly set
+	     every field that needs to be set.  */
+	  cleared = false;
+	else if (!complete_p)
+	  /* If the constructor isn't complete, clear the whole object
+	     beforehand.
 
-	/* If count_type_elements could not determine number of type elements
-	   for a constant-sized object, assume clearing is needed.
-	   Don't do this for variable-sized objects, as store_constructor
-	   will ignore the clearing of variable-sized objects.  */
-	if (num_type_elements < 0 && int_size_in_bytes (type) >= 0)
+	     ??? This ought not to be needed.  For any element not present
+	     in the initializer, we should simply set them to zero.  Except
+	     we'd need to *find* the elements that are not present, and that
+	     requires trickery to avoid quadratic compile-time behavior in
+	     large cases or excessive memory use in small cases.  */
 	  cleared = true;
-	/* If there are "lots" of zeros, then block clear the object first.  */
-	else if (num_type_elements - num_nonzero_elements
+	else if (num_ctor_elements - num_nonzero_elements
 		 > CLEAR_RATIO (optimize_function_for_speed_p (cfun))
-		 && num_nonzero_elements < num_type_elements/4)
+		 && num_nonzero_elements < num_ctor_elements / 4)
+	  /* If there are "lots" of zeros, it's more efficient to clear
+	     the memory and then set the nonzero elements.  */
 	  cleared = true;
-	/* ??? This bit ought not be needed.  For any element not present
-	   in the initializer, we should simply set them to zero.  Except
-	   we'd need to *find* the elements that are not present, and that
-	   requires trickery to avoid quadratic compile-time behavior in
-	   large cases or excessive memory use in small cases.  */
-	else if (num_ctor_elements < num_type_elements)
-	  cleared = true;
+	else
+	  cleared = false;
 
 	/* If there are "lots" of initialized elements, and all of them
 	   are valid address constants, then the entire initializer can
@@ -4931,29 +4889,19 @@ gimplify_addr_expr (tree *expr_p, gimple_seq *pre_p, gimple_seq *post_p)
 
       mark_addressable (TREE_OPERAND (expr, 0));
 
-      /* Fix to PR/41163 (r151122) broke LIPO. Calls to builtin functions
-         were 'canonicized' in profile-use pass, but not in profile-gen. */
-      if (!flag_dyn_ipa)
-        {
-          /* The FEs may end up building ADDR_EXPRs early on a decl with
-             an incomplete type.  Re-build ADDR_EXPRs in canonical form
-             here.  */
-          if (!types_compatible_p (TREE_TYPE (op0), TREE_TYPE (TREE_TYPE (expr))))
-            *expr_p = build_fold_addr_expr (op0);
-        }
+      /* The FEs may end up building ADDR_EXPRs early on a decl with
+	 an incomplete type.  Re-build ADDR_EXPRs in canonical form
+	 here.  */
+      if (!types_compatible_p (TREE_TYPE (op0), TREE_TYPE (TREE_TYPE (expr))))
+	*expr_p = build_fold_addr_expr (op0);
 
       /* Make sure TREE_CONSTANT and TREE_SIDE_EFFECTS are set properly.  */
       recompute_tree_invariant_for_addr_expr (*expr_p);
 
-      /* Fix to PR/41163 (r151122) broke LIPO. Calls to builtin functions
-         were 'canonicized' in profile-use pass, but not in profile-gen. */
-      if (!flag_dyn_ipa)
-        {
-          /* If we re-built the ADDR_EXPR add a conversion to the original type
-             if required.  */
-          if (!useless_type_conversion_p (TREE_TYPE (expr), TREE_TYPE (*expr_p)))
-            *expr_p = fold_convert (TREE_TYPE (expr), *expr_p);
-        }
+      /* If we re-built the ADDR_EXPR add a conversion to the original type
+         if required.  */
+      if (!useless_type_conversion_p (TREE_TYPE (expr), TREE_TYPE (*expr_p)))
+	*expr_p = fold_convert (TREE_TYPE (expr), *expr_p);
 
       break;
     }

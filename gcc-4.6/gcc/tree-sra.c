@@ -86,13 +86,11 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-dump.h"
 #include "timevar.h"
 #include "params.h"
-#include "toplev.h"
 #include "target.h"
 #include "flags.h"
 #include "dbgcnt.h"
 #include "tree-inline.h"
 #include "gimple-pretty-print.h"
-#include "l-ipo.h"
 
 /* Enumeration of all aggregate reductions we can do.  */
 enum sra_mode { SRA_MODE_EARLY_IPA,   /* early call regularization */
@@ -912,7 +910,8 @@ static void
 disqualify_base_of_expr (tree t, const char *reason)
 {
   t = get_base_address (t);
-  if (sra_mode == SRA_MODE_EARLY_IPA
+  if (t
+      && sra_mode == SRA_MODE_EARLY_IPA
       && TREE_CODE (t) == MEM_REF)
     t = get_ssa_base_param (TREE_OPERAND (t, 0));
 
@@ -2939,7 +2938,13 @@ sra_modify_assign (gimple *stmt, gimple_stmt_iterator *gsi)
     }
   else
     {
-      if (access_has_children_p (lacc) && access_has_children_p (racc))
+      if (access_has_children_p (lacc)
+	  && access_has_children_p (racc)
+	  /* When an access represents an unscalarizable region, it usually
+	     represents accesses with variable offset and thus must not be used
+	     to generate new memory accesses.  */
+	  && !lacc->grp_unscalarizable_region
+	  && !racc->grp_unscalarizable_region)
 	{
 	  gimple_stmt_iterator orig_gsi = *gsi;
 	  enum unscalarized_data_handling refreshed;
@@ -4475,9 +4480,7 @@ convert_callers (struct cgraph_node *node, tree old_decl,
 		 cgraph_node_name (cs->caller),
 		 cgraph_node_name (cs->callee));
 
-      if (cs->call_stmt)
-        ipa_modify_call_arguments (cs, cs->call_stmt, adjustments);
-
+      ipa_modify_call_arguments (cs, cs->call_stmt, adjustments);
 
       pop_cfun ();
     }
@@ -4550,15 +4553,6 @@ modify_function (struct cgraph_node *node, ipa_parm_adjustment_vec adjustments)
   sra_ipa_reset_debug_stmts (adjustments);
   convert_callers (new_node, node->decl, adjustments);
   cgraph_make_node_local (new_node);
-
-  /* In LIPO mode, it is possible that the function with the same assember name
-     from the aux module needs to be emitted as well (e.g. in comdat). To avoid
-     conflicts in assembler, change the name.  */
-  if (L_IPO_COMP_MODE)
-    {
-      cgraph_remove_assembler_hash_node (new_node);
-      cgraph_add_assembler_hash_node (new_node);
-    }
   return cfg_changed;
 }
 
@@ -4687,7 +4681,6 @@ ipa_early_sra (void)
     ret = TODO_update_ssa | TODO_cleanup_cfg;
   else
     ret = TODO_update_ssa;
-
   VEC_free (ipa_parm_adjustment_t, heap, adjustments);
 
   statistics_counter_event (cfun, "Unused parameters deleted",
@@ -4711,7 +4704,7 @@ ipa_early_sra (void)
 static bool
 ipa_early_sra_gate (void)
 {
-  return flag_ipa_sra && !flag_dyn_ipa && dbg_cnt (eipa_sra);
+  return flag_ipa_sra && dbg_cnt (eipa_sra);
 }
 
 struct gimple_opt_pass pass_early_ipa_sra =
@@ -4732,3 +4725,5 @@ struct gimple_opt_pass pass_early_ipa_sra =
   TODO_dump_func | TODO_dump_cgraph 	/* todo_flags_finish */
  }
 };
+
+

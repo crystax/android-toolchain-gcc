@@ -5639,7 +5639,7 @@ fi
 if test "x$with_ppl" != xno; then
   if test "x$pwllib" = x; then
     saved_LIBS="$LIBS"
-    LIBS="$LIBS $ppllibs -lstdc++ -lm"
+    LIBS="$LIBS $ppllibs $with_host_libstdcxx"
     { $as_echo "$as_me:${as_lineno-$LINENO}: checking for PWL_handle_timeout in -lpwl" >&5
 $as_echo_n "checking for PWL_handle_timeout in -lpwl... " >&6; }
 if test "${ac_cv_lib_pwl_PWL_handle_timeout+set}" = set; then :
@@ -5683,7 +5683,7 @@ fi
     LIBS="$saved_LIBS"
   fi
 
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx"
+      ppllibs="$ppllibs -lppl_c -lppl -lgmpxx $with_host_libstdcxx"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"

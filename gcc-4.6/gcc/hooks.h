@@ -34,6 +34,8 @@ extern bool hook_bool_mode_false (enum machine_mode);
 extern bool hook_bool_mode_true (enum machine_mode);
 extern bool hook_bool_mode_const_rtx_false (enum machine_mode, const_rtx);
 extern bool hook_bool_mode_const_rtx_true (enum machine_mode, const_rtx);
+extern bool hook_bool_mode_uhwi_false (enum machine_mode,
+				       unsigned HOST_WIDE_INT);
 extern bool hook_bool_tree_false (tree);
 extern bool hook_bool_const_tree_false (const_tree);
 extern bool hook_bool_tree_true (tree);
@@ -84,7 +86,6 @@ extern bool default_can_output_mi_thunk_no_vcall (const_tree, HOST_WIDE_INT,
 extern rtx hook_rtx_rtx_identity (rtx);
 extern rtx hook_rtx_rtx_null (rtx);
 extern rtx hook_rtx_tree_int_null (tree, int);
-extern rtx hook_rtx_void_null (void);
 
 extern const char *hook_constcharptr_const_tree_null (const_tree);
 extern const char *hook_constcharptr_const_rtx_null (const_rtx);

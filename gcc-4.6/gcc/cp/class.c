@@ -2925,7 +2925,7 @@ check_field_decl (tree field,
 	  if (!warned && errorcount > oldcount)
 	    {
 	      inform (DECL_SOURCE_LOCATION (field), "unrestricted unions "
-		      "only available with -std=c++11 or -std=gnu++11");
+		      "only available with -std=c++0x or -std=gnu++0x");
 	      warned = true;
 	    }
 	}
@@ -7093,9 +7093,9 @@ dump_class_hierarchy_r (FILE *stream,
   int i;
 
   indented = maybe_indent_hierarchy (stream, indent, 0);
-  fprintf (stream, "%s (0x%lx) ",
+  fprintf (stream, "%s (0x" HOST_WIDE_INT_PRINT_HEX ") ",
 	   type_as_string (BINFO_TYPE (binfo), TFF_PLAIN_IDENTIFIER),
-	   (unsigned long) binfo);
+	   (HOST_WIDE_INT) (uintptr_t) binfo);
   if (binfo != igo)
     {
       fprintf (stream, "alternative-path\n");
@@ -7117,10 +7117,10 @@ dump_class_hierarchy_r (FILE *stream,
   if (BINFO_PRIMARY_P (binfo))
     {
       indented = maybe_indent_hierarchy (stream, indent + 3, indented);
-      fprintf (stream, " primary-for %s (0x%lx)",
+      fprintf (stream, " primary-for %s (0x" HOST_WIDE_INT_PRINT_HEX ")",
 	       type_as_string (BINFO_TYPE (BINFO_INHERITANCE_CHAIN (binfo)),
 			       TFF_PLAIN_IDENTIFIER),
-	       (unsigned long)BINFO_INHERITANCE_CHAIN (binfo));
+	       (HOST_WIDE_INT) (uintptr_t) BINFO_INHERITANCE_CHAIN (binfo));
     }
   if (BINFO_LOST_PRIMARY_P (binfo))
     {
@@ -7253,7 +7253,8 @@ dump_vtable (tree t, tree binfo, tree vtable)
       if (ctor_vtbl_p)
 	{
 	  if (!BINFO_VIRTUAL_P (binfo))
-	    fprintf (stream, " (0x%lx instance)", (unsigned long)binfo);
+	    fprintf (stream, " (0x" HOST_WIDE_INT_PRINT_HEX " instance)",
+		     (HOST_WIDE_INT) (uintptr_t) binfo);
 	  fprintf (stream, " in %s", type_as_string (t, TFF_PLAIN_IDENTIFIER));
 	}
       fprintf (stream, "\n");
@@ -8438,34 +8439,23 @@ build_rtti_vtbl_entries (tree binfo, vtbl_init_data* vid)
   CONSTRUCTOR_APPEND_ELT (vid->inits, NULL_TREE, init);
 }
 
-/* Given an OBJ_TYPE_REF expression, REF, return the virtual function decl
-   using the method index. KNOWN_TYPE carries the true type of
-   OBJ_TYPE_REF_OBJECT(REF).  */
+/* Fold a OBJ_TYPE_REF expression to the address of a function.
+   KNOWN_TYPE carries the true type of OBJ_TYPE_REF_OBJECT(REF).  */
 
 tree
-cp_get_virtual_function_decl (tree ref, tree known_type)
+cp_fold_obj_type_ref (tree ref, tree known_type)
 {
   HOST_WIDE_INT index = tree_low_cst (OBJ_TYPE_REF_TOKEN (ref), 1);
   HOST_WIDE_INT i = 0;
-  tree binfo = TYPE_BINFO (known_type);
-  tree v;
+  tree v = BINFO_VIRTUALS (TYPE_BINFO (known_type));
   tree fndecl;
 
-  if (!binfo)
-    return NULL_TREE;
-
-  v = BINFO_VIRTUALS (TYPE_BINFO (known_type));
-
-  while (v && i != index)
+  while (i != index)
     {
       i += (TARGET_VTABLE_USES_DESCRIPTORS
 	    ? TARGET_VTABLE_USES_DESCRIPTORS : 1);
       v = TREE_CHAIN (v);
     }
-  
-  /* Return NULL_TREE if the method is not found.  */ 
-  if (!v) 
-    return NULL_TREE;   
 
   fndecl = BV_FN (v);
 
@@ -8474,67 +8464,9 @@ cp_get_virtual_function_decl (tree ref, tree known_type)
 				  DECL_VINDEX (fndecl)));
 #endif
 
-  return fndecl;
-}
-
-/* Fold a OBJ_TYPE_REF expression to the address of a function.
-   KNOWN_TYPE carries the true type of OBJ_TYPE_REF_OBJECT(REF).  */
-
-tree
-cp_fold_obj_type_ref (tree ref, tree known_type)
-{
-  
-  tree fndecl = cp_get_virtual_function_decl (ref, known_type);
-
   cgraph_node (fndecl)->local.vtable_method = true;
 
   return build_address (fndecl);
-}
-
-/* Determine whether the given DECL is a compiler-generated base field
-   in a derived class.  */
-
-bool
-cp_decl_is_base_field (tree decl)
-{
-  if (TREE_CODE (decl) == FIELD_DECL && DECL_FIELD_IS_BASE (decl))
-    return true;
-  else
-    return false;
-}
-
-/* Return true if DECL is a constructor.  */
-
-bool
-cp_decl_is_constructor (tree decl)
-{
-  return DECL_CONSTRUCTOR_P (decl);
-}
-
-/* Return true if DECL is a destructor.  */
-
-bool
-cp_decl_is_destructor (tree decl)
-{
-  return DECL_DESTRUCTOR_P (decl);
-}
-
-/* Return
-   1 if decl is a const member function,
-   2 if decl is not a const member function but has a const overload that
-     has identical parameter list,
-   0 otherwise.  */
-
-int
-cp_decl_is_const_member_func (tree decl)
-{
-  if (DECL_CONST_MEMFUNC_P (decl))
-    return 1;
-  else if (DECL_ATTRIBUTES (decl)
-	   && lookup_attribute ("has_const_overload", DECL_ATTRIBUTES (decl)))
-    return 2;
-  else
-    return 0;
 }
 
 #include "gt-cp-class.h"

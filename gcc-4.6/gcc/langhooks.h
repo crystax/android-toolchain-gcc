@@ -226,61 +226,6 @@ struct lang_hooks_for_decls
   void (*omp_finish_clause) (tree clause);
 };
 
-/* Lang hooks for LIPO.  */
-
-struct lang_hooks_for_lipo
-{
-  /* Add DECL to the list of predefined builtins.  */
-  void (*add_built_in_decl) (tree decl);
-
-  /* Save the tree (by making a copy) and binding values
-     for builtins before parsing start.  */
-  void (*save_built_in_decl_pre_parsing) (void);
-
-  /* Restore builtins and their bindings to their values
-     before parsing. */
-  void (*restore_built_in_decl_pre_parsing) (void);
-
-  /* Save the tree (by making a copy) and binding values for
-     builtins after parsing of a file.  */
-  void (*save_built_in_decl_post_module_parsing) (void);
-
-  /* Restore builtins and their bindings to their post
-     parsing values.  */
-  void (*restore_built_in_decl_post_module_parsing) (void);
-
-  /* Clear symbol binding for name ID. */
-  void (*clear_global_name_bindings) (tree id);
-
-  /* Return true if DECL in SCOPE is scoped in global/namespace scope,
-     otherwise return false. */
-  bool (*has_global_name) (tree decl, void *scope);
-
-  /* Return the actual size of the lang_decl struct for
-     decl T.  */
-  int (*get_lang_decl_size) (tree t);
-
-  /* Duplicate language specific type information from SRC
-   to DEST.  */
-  void (*dup_lang_type) (tree src, tree dest);
-
-  /* Copy DEST into SRC.  */
-  void (*copy_lang_type) (tree src, tree dest);
-
-  /* Process decls after parsing of a source module.  */
-  void (*process_pending_decls) (unsigned);
-
-  /* Clear the list of deferred functions.  */
-  void (*clear_deferred_fns) (void);
-
-  /* Return true if T is compiler generated.  */
-  bool (*is_compiler_generated_type) (tree t);
-
-  /* Compare language specific types T1 and T2.
-     Return 1 if they are compatible.  */
-  int (*cmp_lang_type) (tree t1, tree t2);
-};
-
 /* Language hooks related to LTO serialization.  */
 
 struct lang_hooks_for_lto
@@ -464,8 +409,6 @@ struct lang_hooks
 
   struct lang_hooks_for_types types;
 
-  struct lang_hooks_for_lipo l_ipo;
-
   struct lang_hooks_for_lto lto;
 
   /* Returns the generic parameters of an instantiation of
@@ -483,26 +426,6 @@ struct lang_hooks
      enum gimplify_status, though we can't see that type here.  */
   int (*gimplify_expr) (tree *, gimple_seq *, gimple_seq *);
 
-  /* Return the virtual function decl for the given OBJ_TYPE_REF expression.  */
-  tree (*get_virtual_function_decl) (tree, tree);
-
-  /* Determine whether the given DECL is a compiler-generated base field
-     in a derived class.  */
-  bool (*decl_is_base_field) (tree);
-
-  /* Return true if DECL is a constructor.  */
-  bool (*decl_is_constructor) (tree);
-
-  /* Return true if DECL is a destructor.  */
-  bool (*decl_is_destructor) (tree);
-
-  /* Return
-   1 if decl is a const member function,
-   2 if decl is not a const member function but has a const overload that
-     has identical parameter list,
-   0 otherwise.  */
-  int (*decl_is_const_member_func) (tree);
-
   /* Do language specific processing in the builtin function DECL  */
   tree (*builtin_function) (tree decl);
 
@@ -513,9 +436,6 @@ struct lang_hooks
      ISAs.  If this points to the same function as builtin_function, the
      backend must add all of the builtins at program initialization time.  */
   tree (*builtin_function_ext_scope) (tree decl);
-
-  /* Returns true if DECL is a user defined conversion operator (C++) */
-  bool (*user_conv_function_p) (tree decl);
 
   /* Used to set up the tree_contains_structure array for a frontend. */
   void (*init_ts) (void);

@@ -704,12 +704,11 @@ compute_known_type_jump_func (tree op, struct ipa_jump_func *jfunc,
       || is_global_var (base))
     return;
 
-  if (detect_type_change (op, base, call, jfunc, offset))
+  binfo = TYPE_BINFO (TREE_TYPE (base));
+  if (!binfo
+      || detect_type_change (op, base, call, jfunc, offset))
     return;
 
-  binfo = TYPE_BINFO (TREE_TYPE (base));
-  if (!binfo)
-    return;
   binfo = get_binfo_at_offset (binfo, offset, TREE_TYPE (op));
   if (binfo)
     {
@@ -1418,6 +1417,8 @@ ipa_analyze_call_uses (struct cgraph_node *node,
 {
   tree target = gimple_call_fn (call);
 
+  if (!target)
+    return;
   if (TREE_CODE (target) == SSA_NAME)
     ipa_analyze_indirect_call_uses (node, info, parms_info, call, target);
   else if (TREE_CODE (target) == OBJ_TYPE_REF)

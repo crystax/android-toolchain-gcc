@@ -19,4 +19,4 @@ main ()
   return 0;
 }
 
-/* { dg-final-use { cleanup-ipa-dump "profile" } } */
+/* { dg-final-use { cleanup-ipa-dump "tree_profile_ipa" } } */

@@ -70,12 +70,13 @@ target_alias=${target_alias-$host_alias}
 #  no-define:  PACKAGE and VERSION will not be #define'd in config.h (a bunch
 #              of other PACKAGE_* variables will, however, and there's nothing
 #              we can do about that; they come from AC_INIT).
+#  no-dist:  we don't want 'dist' and related rules.
 #  foreign:  we don't follow the normal rules for GNU packages (no COPYING
 #            file in the top srcdir, etc, etc), so stop complaining.
 #  -Wall:  turns on all automake warnings...
 #  -Wno-portability:  ...except this one, since GNU make is required.
 #  -Wno-override: ... and this one, since we do want this in testsuite.
-AM_INIT_AUTOMAKE([1.9.0 foreign -Wall -Wno-portability -Wno-override])
+AM_INIT_AUTOMAKE([1.9.0 foreign no-dist -Wall -Wno-portability -Wno-override])
 AM_ENABLE_MULTILIB(, ..)
 
 # Calculate toolexeclibdir
@@ -175,21 +176,27 @@ AH_BOTTOM(
 # Check to see if -pthread or -lpthread is needed.  Prefer the former.
 # In case the pthread.h system header is not found, this test will fail.
 XPCFLAGS=""
-CFLAGS="$CFLAGS -pthread"
 AC_LINK_IFELSE(
  [AC_LANG_PROGRAM(
   [#include <pthread.h>
    void *g(void *d) { return NULL; }],
   [pthread_t t; pthread_create(&t,NULL,g,NULL);])],
- [XPCFLAGS=" -Wc,-pthread"],
- [CFLAGS="$save_CFLAGS" LIBS="-lpthread $LIBS"
-  AC_LINK_IFELSE(
-   [AC_LANG_PROGRAM(
-    [#include <pthread.h>
-     void *g(void *d) { return NULL; }],
-    [pthread_t t; pthread_create(&t,NULL,g,NULL);])],
-   [],
-   [AC_MSG_ERROR([Pthreads are required to build libitm])])])
+ [XPCFLAGS=""],
+  [CFLAGS="$CFLAGS -pthread"
+   AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM(
+     [#include <pthread.h>
+      void *g(void *d) { return NULL; }],
+     [pthread_t t; pthread_create(&t,NULL,g,NULL);])],
+    [XPCFLAGS=" -Wc,-pthread"],
+    [CFLAGS="$save_CFLAGS" LIBS="-lpthread $LIBS"
+     AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM(
+       [#include <pthread.h>
+        void *g(void *d) { return NULL; }],
+       [pthread_t t; pthread_create(&t,NULL,g,NULL);])],
+      [],
+      [AC_MSG_ERROR([Pthreads are required to build libitm])])])])
 
 # Check for functions needed.
 AC_CHECK_FUNCS(strtoull memalign posix_memalign)

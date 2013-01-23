@@ -686,7 +686,7 @@ precompute_register_parameters (int num_actuals, struct arg_data *args,
 	/* If the value is a non-legitimate constant, force it into a
 	   pseudo now.  TLS symbols sometimes need a call to resolve.  */
 	if (CONSTANT_P (args[i].value)
-	    && !LEGITIMATE_CONSTANT_P (args[i].value))
+	    && !targetm.legitimate_constant_p (args[i].mode, args[i].value))
 	  args[i].value = force_reg (args[i].mode, args[i].value);
 
 	/* If we are to promote the function arg to a wider mode,
@@ -1064,8 +1064,6 @@ initialize_argument_information (int num_actuals ATTRIBUTE_UNUSED,
 		  && TREE_CODE (base) != SSA_NAME
 		  && (!DECL_P (base) || MEM_P (DECL_RTL (base)))))
 	    {
-	      mark_addressable (args[i].tree_value);
-
 	      /* We can't use sibcalls if a callee-copied argument is
 		 stored in the current function's frame.  */
 	      if (!call_from_thunk_p && DECL_P (base) && !TREE_STATIC (base))
@@ -3580,7 +3578,8 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 
       /* Make sure it is a reasonable operand for a move or push insn.  */
       if (!REG_P (addr) && !MEM_P (addr)
-	  && ! (CONSTANT_P (addr) && LEGITIMATE_CONSTANT_P (addr)))
+	  && !(CONSTANT_P (addr)
+	       && targetm.legitimate_constant_p (Pmode, addr)))
 	addr = force_operand (addr, NULL_RTX);
 
       argvec[count].value = addr;
@@ -3621,7 +3620,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 
       /* Make sure it is a reasonable operand for a move or push insn.  */
       if (!REG_P (val) && !MEM_P (val)
-	  && ! (CONSTANT_P (val) && LEGITIMATE_CONSTANT_P (val)))
+	  && !(CONSTANT_P (val) && targetm.legitimate_constant_p (mode, val)))
 	val = force_operand (val, NULL_RTX);
 
       if (pass_by_reference (&args_so_far, mode, NULL_TREE, 1))
@@ -3639,12 +3638,7 @@ emit_library_call_value_1 (int retval, rtx orgfun, rtx value,
 	    }
 
 	  if (MEM_P (val) && !must_copy)
-	    {
-	      tree val_expr = MEM_EXPR (val);
-	      if (val_expr)
-		mark_addressable (val_expr);
-	      slot = val;
-	    }
+	    slot = val;
 	  else
 	    {
 	      slot = assign_temp (lang_hooks.types.type_for_mode (mode, 0),

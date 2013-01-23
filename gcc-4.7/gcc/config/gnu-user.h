@@ -2,7 +2,7 @@
    (glibc-based) userspace or other userspace with libc derived from
    glibc (e.g. uClibc) or for which similar specs are appropriate.
    Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2003, 2004, 2005, 2006,
-   2007, 2009, 2010, 2011 Free Software Foundation, Inc.
+   2007, 2009, 2010, 2011, 2013 Free Software Foundation, Inc.
    Contributed by Eric Youngdale.
    Modified for stabs-in-ELF by H.J. Lu (hjl@lucon.org).
 
@@ -40,7 +40,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    the GNU userspace magical crtbegin.o file (see crtstuff.c) which
    provides part of the support for getting C++ file-scope static
    object constructed before entering `main'.  */
-   
+
 #if defined HAVE_LD_PIE
 #define GNU_USER_TARGET_STARTFILE_SPEC \
   "%{!shared: %{pg|p|profile:gcrt1.o%s;pie:Scrt1.o%s;:crt1.o%s}} \
@@ -74,9 +74,11 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #undef CPLUSPLUS_CPP_SPEC
 #define CPLUSPLUS_CPP_SPEC "-D_GNU_SOURCE %(cpp)"
 
+#undef GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD
 #define GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD \
    "%{shared:-lc} \
    %{!shared:%{mieee-fp:-lieee} %{profile:-lc_p}%{!profile:-lc}}"
+#undef GNU_USER_TARGET_LIB_SPEC
 #define GNU_USER_TARGET_LIB_SPEC \
   "%{pthread:-lpthread} "\
   GNU_USER_TARGET_LIB_SPEC_LESS_PTHREAD

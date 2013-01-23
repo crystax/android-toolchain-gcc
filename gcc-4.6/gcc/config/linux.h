@@ -74,15 +74,12 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
    GLIBC_DYNAMIC_LINKER must be defined for each target using them, or
    GLIBC_DYNAMIC_LINKER32 and GLIBC_DYNAMIC_LINKER64 for targets
    supporting both 32-bit and 64-bit compilation.  */
-#ifndef RUNTIME_ROOT_PREFIX
-#define RUNTIME_ROOT_PREFIX ""
-#endif
-#define UCLIBC_DYNAMIC_LINKER RUNTIME_ROOT_PREFIX "/lib/ld-uClibc.so.0"
-#define UCLIBC_DYNAMIC_LINKER32 RUNTIME_ROOT_PREFIX "/lib/ld-uClibc.so.0"
-#define UCLIBC_DYNAMIC_LINKER64 RUNTIME_ROOT_PREFIX "/lib/ld64-uClibc.so.0"
-#define BIONIC_DYNAMIC_LINKER RUNTIME_ROOT_PREFIX "/system/bin/linker"
-#define BIONIC_DYNAMIC_LINKER32 RUNTIME_ROOT_PREFIX "/system/bin/linker"
-#define BIONIC_DYNAMIC_LINKER64 RUNTIME_ROOT_PREFIX "/system/bin/linker64"
+#define UCLIBC_DYNAMIC_LINKER "/lib/ld-uClibc.so.0"
+#define UCLIBC_DYNAMIC_LINKER32 "/lib/ld-uClibc.so.0"
+#define UCLIBC_DYNAMIC_LINKER64 "/lib/ld64-uClibc.so.0"
+#define BIONIC_DYNAMIC_LINKER "/system/bin/linker"
+#define BIONIC_DYNAMIC_LINKER32 "/system/bin/linker"
+#define BIONIC_DYNAMIC_LINKER64 "/system/bin/linker64"
 
 #define LINUX_DYNAMIC_LINKER						\
   CHOOSE_DYNAMIC_LINKER (GLIBC_DYNAMIC_LINKER, UCLIBC_DYNAMIC_LINKER,	\
@@ -99,7 +96,7 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #define TARGET_C99_FUNCTIONS (OPTION_GLIBC)
 
 /* Whether we have sincos that follows the GNU extension.  */
-#define TARGET_HAS_SINCOS (OPTION_GLIBC || OPTION_BIONIC)
+#define TARGET_HAS_SINCOS OPTION_GLIBC
 
 /* Whether we have Bionic libc runtime */
 #undef TARGET_HAS_BIONIC

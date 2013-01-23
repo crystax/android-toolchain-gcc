@@ -4363,6 +4363,11 @@ gfc_build_intrinsic_call (const char* name, locus where, unsigned numarg, ...)
   result->value.function.name = name;
   result->value.function.isym = isym;
 
+  result->symtree = gfc_find_symtree (gfc_current_ns->sym_root, name);
+  gcc_assert (result->symtree
+	      && (result->symtree->n.sym->attr.flavor == FL_PROCEDURE
+		  || result->symtree->n.sym->attr.flavor == FL_UNKNOWN));
+
   va_start (ap, numarg);
   atail = NULL;
   for (i = 0; i < numarg; ++i)
@@ -4469,7 +4474,11 @@ gfc_check_vardef_context (gfc_expr* e, bool pointer, const char* context)
       if (ptr_component && ref->type == REF_COMPONENT)
 	check_intentin = false;
       if (ref->type == REF_COMPONENT && ref->u.c.component->attr.pointer)
-	ptr_component = true;
+	{
+	  ptr_component = true;
+	  if (!pointer)
+	    check_intentin = false;
+	}
     }
   if (check_intentin && sym->attr.intent == INTENT_IN)
     {

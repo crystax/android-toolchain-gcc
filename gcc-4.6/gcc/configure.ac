@@ -709,46 +709,9 @@ AC_ARG_ENABLE(shared,
 ], [enable_shared=yes])
 AC_SUBST(enable_shared)
 
-# The use of native_system_header_dir here is for the value (optionally)
-# configured here.  Uses of NATIVE_SYSTEM_HEADER_DIR in this file refer
-# to the make variable defined in Makefile or in target make fragments.
-AC_ARG_WITH([native-system-header-dir],
-  [  --with-native-system-header-dir=dir
-                          use dir as the directory to look for standard
-                          system header files in.  Defaults to /usr/include.],
-[
- case ${with_native_system_header_dir} in
- yes|no) AC_MSG_ERROR([bad value ${withval} given for native system include directory]) ;;
- /*) ;;
- *) AC_MSG_ERROR([${withval} should be an absolute directory]) ;;
- esac
- native_system_header_dir="${withval}"
-], [native_system_header_dir=/usr/include])
-AC_SUBST(NATIVE_SYSTEM_HEADER_DIR, $native_system_header_dir)
-
-AC_ARG_WITH([runtime-root-prefix],
-  [  --with-runtime-root-prefix=prefix
-                          prepend prefix to paths used by the compiler to
-                          name the dynamic linker and other files used at
-                          runtime.  Defaults to empty (no prefix).],
-[
- case ${with_runtime_root_prefix} in
- yes|no) AC_MSG_ERROR([bad value ${withval} given for runtime root prefix]) ;;
- /*) ;;
- *) AC_MSG_ERROR([${withval} should be an absolute directory]) ;;
- esac
- RUNTIME_ROOT_PREFIX_DEFINE="-DRUNTIME_ROOT_PREFIX=\\\"${withval}\\\""
-], [RUNTIME_ROOT_PREFIX_DEFINE=""])
-AC_SUBST(RUNTIME_ROOT_PREFIX_DEFINE)
-
-AC_ARG_WITH([build-sysroot],
-  [  --with-build-sysroot=SYSROOT
-                          use sysroot as the system root during the build],
-  [if test x"$withval" != x ; then
-     SYSROOT_CFLAGS_FOR_TARGET="--sysroot=$withval"
-   fi],
-  [SYSROOT_CFLAGS_FOR_TARGET=])
-AC_SUBST(SYSROOT_CFLAGS_FOR_TARGET)
+AC_ARG_WITH(build-sysroot, 
+  [  --with-build-sysroot=sysroot
+                          use sysroot as the system root during the build])
 
 AC_ARG_WITH(sysroot,
 [  --with-sysroot[=DIR] Search for usr/lib, usr/include, et al, within DIR.],
@@ -797,7 +760,7 @@ AC_ARG_WITH(specs,
 )
 AC_SUBST(CONFIGURE_SPECS)
 
-ACX_PKGVERSION([GCC])
+ACX_PKGVERSION([Linaro GCC `cat $srcdir/LINARO-VERSION`])
 ACX_BUGURL([http://gcc.gnu.org/bugs.html])
 
 # Sanity check enable_languages in case someone does not run the toplevel
@@ -1967,17 +1930,6 @@ else
         AC_PATH_PROG(gcc_cv_ld, $LD_FOR_TARGET)
 fi])
 
-gcc_cv_ld_gold_srcdir=`echo $srcdir | sed -e 's,/gcc$,,'`/gold
-
-AS_VAR_SET_IF(gcc_cv_gold,, [
-if test -f $gcc_cv_ld_gold_srcdir/configure.ac \
-     && test -f ../gold/Makefile \
-     && test x$build = x$host; then
-	gcc_cv_gold=../gold/ld-new$build_exeext
-else
-        gcc_cv_gold=''
-fi])
-
 ORIGINAL_PLUGIN_LD_FOR_TARGET=$gcc_cv_ld
 PLUGIN_LD=`basename $gcc_cv_ld`
 AC_ARG_WITH(plugin-ld,
@@ -2006,9 +1958,6 @@ case "$ORIGINAL_LD_FOR_TARGET" in
   ./collect-ld | ./collect-ld$build_exeext) ;;
   *) AC_CONFIG_FILES(collect-ld:exec-tool.in, [chmod +x collect-ld]) ;;
 esac 
-
-ORIGINAL_GOLD_FOR_TARGET=$gcc_cv_gold
-AC_SUBST(ORIGINAL_GOLD_FOR_TARGET)
 
 AC_MSG_CHECKING(what linker to use)
 if test "$gcc_cv_ld" = ../ld/ld-new$build_exeext; then
@@ -3979,7 +3928,8 @@ Valid choices are 'yes' and 'no'.]) ;;
   esac],
  [gcc_GAS_CHECK_FEATURE([gnu_unique_object], gcc_cv_as_gnu_unique_object,
    [elf,2,19,52],,
-   [.type foo, @gnu_unique_object],,
+   [.type foo, '$target_type_format_char'gnu_unique_object],,
+# We need to unquote above to to use the definition from config.gcc.
 # Also check for ld.so support, i.e. glibc 2.11 or higher.
    [[if test x$host = x$build -a x$host = x$target &&
        ldd --version 2>/dev/null &&
@@ -4225,7 +4175,9 @@ case "$target:$tm_file" in
     AC_CACHE_CHECK(linker support for omitting dot symbols,
     gcc_cv_ld_no_dot_syms,
     [gcc_cv_ld_no_dot_syms=no
-    if test $in_tree_ld = yes ; then
+    if test x"$ld_is_gold" = xyes; then
+      gcc_cv_ld_no_dot_syms=yes
+    elif test $in_tree_ld = yes ; then
       if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 16 -o "$gcc_cv_gld_major_version" -gt 2; then
         gcc_cv_ld_no_dot_syms=yes
       fi
@@ -4262,7 +4214,9 @@ EOF
     AC_CACHE_CHECK(linker large toc support,
     gcc_cv_ld_large_toc,
     [gcc_cv_ld_large_toc=no
-    if test $in_tree_ld = yes ; then
+    if test x"$ld_is_gold" = xyes; then
+      gcc_cv_ld_large_toc=yes
+    elif test $in_tree_ld = yes ; then
       if test "$gcc_cv_gld_major_version" -eq 2 -a "$gcc_cv_gld_minor_version" -ge 21 -o "$gcc_cv_gld_major_version" -gt 2; then
         gcc_cv_ld_large_toc=yes
       fi
@@ -4379,14 +4333,14 @@ if test x$host != x$target || test "x$TARGET_SYSTEM_ROOT" != x; then
   elif test "x$with_sysroot" = x; then
     target_header_dir="${exec_prefix}/${target_noncanonical}/sys-include"
   elif test "x$with_build_sysroot" != "x"; then
-    target_header_dir="${with_build_sysroot}${native_system_header_dir}"
+    target_header_dir="${with_build_sysroot}/usr/include"
   elif test "x$with_sysroot" = xyes; then
-    target_header_dir="${exec_prefix}/${target_noncanonical}/sys-root${native_system_header_dir}"
+    target_header_dir="${exec_prefix}/${target_noncanonical}/sys-root/usr/include"
   else
-    target_header_dir="${with_sysroot}${native_system_header_dir}"
+    target_header_dir="${with_sysroot}/usr/include"
   fi
 else
-  target_header_dir=${native_system_header_dir}
+  target_header_dir=/usr/include
 fi
 
 # Test for stack protector support in target C library.
@@ -4751,18 +4705,6 @@ else
 fi)
 AC_SUBST(slibdir)
 
-# Set default prefix canonicalization.
-
-AC_ARG_ENABLE(canonical-prefixes,
-[  --enable-canonical-prefixes
-                          enable or disable prefix canonicalization],
-[],
-enable_canonical_prefixes=yes)
-if test x"$enable_canonical_prefixes" = xyes; then
-  AC_DEFINE(ENABLE_CANONICAL_PREFIXES,
-            1, [Define to enable prefix canonicalization.])
-fi
-
 # Substitute configuration variables
 AC_SUBST(subdirs)
 AC_SUBST(srcdir)
@@ -4971,20 +4913,6 @@ if test "${ENABLE_LIBQUADMATH_SUPPORT}" != "no" ; then
   AC_DEFINE(ENABLE_LIBQUADMATH_SUPPORT, 1,
             [Define to 1 to enable libquadmath support])
 fi
-
-
-warn_frame_larger_than_extra_text=
-AC_ARG_WITH(warn-frame-larger-than-extra-text,
-[  --with-warn-frame-larger-than-extra-text=TEXT
-                          specifies extra text for frame size warnings],
-[case "${withval}" in
-yes)	AC_MSG_ERROR(bad value ${withval} given for frame size warning text) ;;
-no)	;;
-*)	warn_frame_larger_than_extra_text="$withval" ;;
-esac])
-AC_DEFINE_UNQUOTED(WARN_FRAME_LARGER_THAN_EXTRA_TEXT,
-                   "$warn_frame_larger_than_extra_text",
-                   [Define to be extra text for frame size warnings.])
 
 
 # Configure the subdirectories

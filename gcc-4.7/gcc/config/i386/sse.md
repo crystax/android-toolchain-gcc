@@ -21,7 +21,8 @@
 (define_c_enum "unspec" [
   ;; SSE
   UNSPEC_MOVNT
-  UNSPEC_MOVU
+  UNSPEC_LOADU
+  UNSPEC_STOREU
 
   ;; SSE3
   UNSPEC_LDDQU
@@ -580,23 +581,51 @@
   DONE;
 })
 
-(define_insn "<sse>_movu<ssemodesuffix><avxsizesuffix>"
-  [(set (match_operand:VF 0 "nonimmediate_operand" "=x,m")
+(define_insn "<sse>_loadu<ssemodesuffix><avxsizesuffix>"
+  [(set (match_operand:VF 0 "register_operand" "=x")
 	(unspec:VF
-	  [(match_operand:VF 1 "nonimmediate_operand" "xm,x")]
-	  UNSPEC_MOVU))]
-  "TARGET_SSE && !(MEM_P (operands[0]) && MEM_P (operands[1]))"
+	  [(match_operand:VF 1 "memory_operand" "m")]
+	  UNSPEC_LOADU))]
+  "TARGET_SSE"
   "%vmovu<ssemodesuffix>\t{%1, %0|%0, %1}"
   [(set_attr "type" "ssemov")
    (set_attr "movu" "1")
    (set_attr "prefix" "maybe_vex")
    (set_attr "mode" "<MODE>")])
 
-(define_insn "<sse2>_movdqu<avxsizesuffix>"
-  [(set (match_operand:VI1 0 "nonimmediate_operand" "=x,m")
-	(unspec:VI1 [(match_operand:VI1 1 "nonimmediate_operand" "xm,x")]
-		    UNSPEC_MOVU))]
-  "TARGET_SSE2 && !(MEM_P (operands[0]) && MEM_P (operands[1]))"
+(define_insn "<sse>_storeu<ssemodesuffix><avxsizesuffix>"
+  [(set (match_operand:VF 0 "memory_operand" "=m")
+	(unspec:VF
+	  [(match_operand:VF 1 "register_operand" "x")]
+	  UNSPEC_STOREU))]
+  "TARGET_SSE"
+  "%vmovu<ssemodesuffix>\t{%1, %0|%0, %1}"
+  [(set_attr "type" "ssemov")
+   (set_attr "movu" "1")
+   (set_attr "prefix" "maybe_vex")
+   (set_attr "mode" "<MODE>")])
+
+(define_insn "<sse2>_loaddqu<avxsizesuffix>"
+  [(set (match_operand:VI1 0 "register_operand" "=x")
+	(unspec:VI1 [(match_operand:VI1 1 "memory_operand" "m")]
+		    UNSPEC_LOADU))]
+  "TARGET_SSE2"
+  "%vmovdqu\t{%1, %0|%0, %1}"
+  [(set_attr "type" "ssemov")
+   (set_attr "movu" "1")
+   (set (attr "prefix_data16")
+     (if_then_else
+       (match_test "TARGET_AVX")
+     (const_string "*")
+     (const_string "1")))
+   (set_attr "prefix" "maybe_vex")
+   (set_attr "mode" "<sseinsnmode>")])
+
+(define_insn "<sse2>_storedqu<avxsizesuffix>"
+  [(set (match_operand:VI1 0 "memory_operand" "=m")
+	(unspec:VI1 [(match_operand:VI1 1 "register_operand" "x")]
+		    UNSPEC_STOREU))]
+  "TARGET_SSE2"
   "%vmovdqu\t{%1, %0|%0, %1}"
   [(set_attr "type" "ssemov")
    (set_attr "movu" "1")
@@ -1873,79 +1902,75 @@
 	    (match_operand:VF_128 1 "nonimmediate_operand")
 	    (match_operand:VF_128 2 "nonimmediate_operand")
 	    (match_operand:VF_128 3 "nonimmediate_operand"))
-	  (match_dup 0)
+	  (match_dup 1)
 	  (const_int 1)))]
   "TARGET_FMA")
 
 (define_insn "*fmai_fmadd_<mode>"
-  [(set (match_operand:VF_128 0 "register_operand" "=x,x,x")
+  [(set (match_operand:VF_128 0 "register_operand" "=x,x")
         (vec_merge:VF_128
 	  (fma:VF_128
-	    (match_operand:VF_128 1 "nonimmediate_operand" "%0, 0,x")
-	    (match_operand:VF_128 2 "nonimmediate_operand" "xm, x,xm")
-	    (match_operand:VF_128 3 "nonimmediate_operand" " x,xm,0"))
-	  (match_dup 0)
+	    (match_operand:VF_128 1 "nonimmediate_operand" " 0, 0")
+	    (match_operand:VF_128 2 "nonimmediate_operand" "xm, x")
+	    (match_operand:VF_128 3 "nonimmediate_operand" " x,xm"))
+	  (match_dup 1)
 	  (const_int 1)))]
   "TARGET_FMA"
   "@
    vfmadd132<ssescalarmodesuffix>\t{%2, %3, %0|%0, %3, %2}
-   vfmadd213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}
-   vfmadd231<ssescalarmodesuffix>\t{%2, %1, %0|%0, %1, %2}"
+   vfmadd213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}"
   [(set_attr "type" "ssemuladd")
    (set_attr "mode" "<MODE>")])
 
 (define_insn "*fmai_fmsub_<mode>"
-  [(set (match_operand:VF_128 0 "register_operand" "=x,x,x")
+  [(set (match_operand:VF_128 0 "register_operand" "=x,x")
         (vec_merge:VF_128
 	  (fma:VF_128
-	    (match_operand:VF_128   1 "nonimmediate_operand" "%0, 0,x")
-	    (match_operand:VF_128   2 "nonimmediate_operand" "xm, x,xm")
+	    (match_operand:VF_128   1 "nonimmediate_operand" " 0, 0")
+	    (match_operand:VF_128   2 "nonimmediate_operand" "xm, x")
 	    (neg:VF_128
-	      (match_operand:VF_128 3 "nonimmediate_operand" " x,xm,0")))
-	  (match_dup 0)
+	      (match_operand:VF_128 3 "nonimmediate_operand" " x,xm")))
+	  (match_dup 1)
 	  (const_int 1)))]
   "TARGET_FMA"
   "@
    vfmsub132<ssescalarmodesuffix>\t{%2, %3, %0|%0, %3, %2}
-   vfmsub213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}
-   vfmsub231<ssescalarmodesuffix>\t{%2, %1, %0|%0, %1, %2}"
+   vfmsub213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}"
   [(set_attr "type" "ssemuladd")
    (set_attr "mode" "<MODE>")])
 
 (define_insn "*fmai_fnmadd_<mode>"
-  [(set (match_operand:VF_128 0 "register_operand" "=x,x,x")
+  [(set (match_operand:VF_128 0 "register_operand" "=x,x")
         (vec_merge:VF_128
 	  (fma:VF_128
 	    (neg:VF_128
-	      (match_operand:VF_128 1 "nonimmediate_operand" "%0, 0,x"))
-	    (match_operand:VF_128   2 "nonimmediate_operand" "xm, x,xm")
-	    (match_operand:VF_128   3 "nonimmediate_operand" " x,xm,0"))
-	  (match_dup 0)
+	      (match_operand:VF_128 2 "nonimmediate_operand" "xm, x"))
+	    (match_operand:VF_128   1 "nonimmediate_operand" " 0, 0")
+	    (match_operand:VF_128   3 "nonimmediate_operand" " x,xm"))
+	  (match_dup 1)
 	  (const_int 1)))]
   "TARGET_FMA"
   "@
    vfnmadd132<ssescalarmodesuffix>\t{%2, %3, %0|%0, %3, %2}
-   vfnmadd213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}
-   vfnmadd231<ssescalarmodesuffix>\t{%2, %1, %0|%0, %1, %2}"
+   vfnmadd213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}"
   [(set_attr "type" "ssemuladd")
    (set_attr "mode" "<MODE>")])
 
 (define_insn "*fmai_fnmsub_<mode>"
-  [(set (match_operand:VF_128 0 "register_operand" "=x,x,x")
+  [(set (match_operand:VF_128 0 "register_operand" "=x,x")
         (vec_merge:VF_128
 	  (fma:VF_128
 	    (neg:VF_128
-	      (match_operand:VF_128 1 "nonimmediate_operand" "%0, 0,x"))
-	    (match_operand:VF_128   2 "nonimmediate_operand" "xm, x,xm")
+	      (match_operand:VF_128 2 "nonimmediate_operand" "xm, x"))
+	    (match_operand:VF_128   1 "nonimmediate_operand" " 0, 0")
 	    (neg:VF_128
-	      (match_operand:VF_128 3 "nonimmediate_operand" " x,xm,0")))
-	  (match_dup 0)
+	      (match_operand:VF_128 3 "nonimmediate_operand" " x,xm")))
+	  (match_dup 1)
 	  (const_int 1)))]
   "TARGET_FMA"
   "@
    vfnmsub132<ssescalarmodesuffix>\t{%2, %3, %0|%0, %3, %2}
-   vfnmsub213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}
-   vfnmsub231<ssescalarmodesuffix>\t{%2, %1, %0|%0, %1, %2}"
+   vfnmsub213<ssescalarmodesuffix>\t{%3, %2, %0|%0, %2, %3}"
   [(set_attr "type" "ssemuladd")
    (set_attr "mode" "<MODE>")])
 
@@ -12290,7 +12315,7 @@
    (set_attr "mode" "<sseinsnmode>")])
 
 (define_insn "<avx_avx2>_maskstore<ssemodesuffix><avxsizesuffix>"
-  [(set (match_operand:V48_AVX2 0 "memory_operand" "=m")
+  [(set (match_operand:V48_AVX2 0 "memory_operand" "+m")
 	(unspec:V48_AVX2
 	  [(match_operand:<sseintvecmode> 1 "register_operand" "x")
 	   (match_operand:V48_AVX2 2 "register_operand" "x")

@@ -401,8 +401,8 @@
 ;; DFmode moves
 
 (define_insn "*movdf_vfp"
-  [(set (match_operand:DF 0 "nonimmediate_soft_df_operand" "=w,?r,w ,r, m,w  ,Uv,w,r")
-	(match_operand:DF 1 "soft_df_operand"		   " ?r,w,Dy,mF,r,UvF,w, w,r"))]
+  [(set (match_operand:DF 0 "nonimmediate_soft_df_operand" "=w,?r,w ,w  ,Uv,r, m,w,r")
+	(match_operand:DF 1 "soft_df_operand"		   " ?r,w,Dy,UvF,w ,mF,r,w,r"))]
   "TARGET_ARM && TARGET_HARD_FLOAT && TARGET_VFP
    && (   register_operand (operands[0], DFmode)
        || register_operand (operands[1], DFmode))"
@@ -418,9 +418,9 @@
 	gcc_assert (TARGET_VFP_DOUBLE);
         return \"fconstd%?\\t%P0, #%G1\";
       case 3: case 4:
-	return output_move_double (operands);
-      case 5: case 6:
 	return output_move_vfp (operands);
+      case 5: case 6:
+	return output_move_double (operands);
       case 7:
 	if (TARGET_VFP_SINGLE)
 	  return \"fcpys%?\\t%0, %1\;fcpys%?\\t%p0, %p1\";
@@ -435,7 +435,7 @@
   "
   [(set_attr "type"
      "r_2_f,f_2_r,fconstd,f_loadd,f_stored,load2,store2,ffarithd,*")
-   (set (attr "length") (cond [(eq_attr "alternative" "3,4,8") (const_int 8)
+   (set (attr "length") (cond [(eq_attr "alternative" "5,6,8") (const_int 8)
 			       (eq_attr "alternative" "7")
 				(if_then_else
 				 (eq (symbol_ref "TARGET_VFP_SINGLE")
@@ -449,8 +449,8 @@
 )
 
 (define_insn "*thumb2_movdf_vfp"
-  [(set (match_operand:DF 0 "nonimmediate_soft_df_operand" "=w,?r,w ,r, m,w  ,Uv,w,r")
-	(match_operand:DF 1 "soft_df_operand"		   " ?r,w,Dy,mF,r,UvF,w, w,r"))]
+  [(set (match_operand:DF 0 "nonimmediate_soft_df_operand" "=w,?r,w ,w  ,Uv,r ,m,w,r")
+	(match_operand:DF 1 "soft_df_operand"		   " ?r,w,Dy,UvF,w, mF,r, w,r"))]
   "TARGET_THUMB2 && TARGET_HARD_FLOAT && TARGET_VFP"
   "*
   {
@@ -463,10 +463,10 @@
       case 2:
 	gcc_assert (TARGET_VFP_DOUBLE);
 	return \"fconstd%?\\t%P0, #%G1\";
-      case 3: case 4: case 8:
-	return output_move_double (operands);
-      case 5: case 6:
+      case 3: case 4:
 	return output_move_vfp (operands);
+      case 5: case 6: case 8:
+	return output_move_double (operands);
       case 7:
 	if (TARGET_VFP_SINGLE)
 	  return \"fcpys%?\\t%0, %1\;fcpys%?\\t%p0, %p1\";
@@ -478,8 +478,8 @@
     }
   "
   [(set_attr "type"
-     "r_2_f,f_2_r,fconstd,load2,store2,f_loadd,f_stored,ffarithd,*")
-   (set (attr "length") (cond [(eq_attr "alternative" "3,4,8") (const_int 8)
+     "r_2_f,f_2_r,fconstd,f_loadd,f_stored,load2,store2,ffarithd,*")
+   (set (attr "length") (cond [(eq_attr "alternative" "5,6,8") (const_int 8)
 			       (eq_attr "alternative" "7")
 				(if_then_else
 				 (eq (symbol_ref "TARGET_VFP_SINGLE")
@@ -487,8 +487,8 @@
 				 (const_int 8)
 				 (const_int 4))]
 			      (const_int 4)))
-   (set_attr "pool_range" "*,*,*,4096,*,1020,*,*,*")
-   (set_attr "neg_pool_range" "*,*,*,0,*,1008,*,*,*")]
+   (set_attr "pool_range" "*,*,*,1020,*,4096,*,*,*")
+   (set_attr "neg_pool_range" "*,*,*,1008,*,0,*,*,*")]
 )
 
 
@@ -1131,9 +1131,40 @@
    (set_attr "type" "fcmpd")]
 )
 
+;; Fixed point to floating point conversions. 
+(define_code_iterator FCVT [unsigned_float float])
+(define_code_attr FCVTI32typename [(unsigned_float "u32") (float "s32")])
+
+(define_insn "*combine_vcvt_f32_<FCVTI32typename>"
+  [(set (match_operand:SF 0 "s_register_operand" "=t")
+	(mult:SF (FCVT:SF (match_operand:SI 1 "s_register_operand" "0"))
+		 (match_operand 2 
+			"const_double_vcvt_power_of_two_reciprocal" "Dt")))]
+  "TARGET_32BIT && TARGET_HARD_FLOAT && TARGET_VFP3 && !flag_rounding_math"
+  "vcvt.f32.<FCVTI32typename>\\t%0, %1, %v2"
+ [(set_attr "predicable" "no")
+  (set_attr "type" "f_cvt")]
+)
+
+;; Not the ideal way of implementing this. Ideally we would be able to split
+;; this into a move to a DP register and then a vcvt.f64.i32
+(define_insn "*combine_vcvt_f64_<FCVTI32typename>"
+  [(set (match_operand:DF 0 "s_register_operand" "=x,x,w")
+	(mult:DF (FCVT:DF (match_operand:SI 1 "s_register_operand" "r,t,r"))
+		 (match_operand 2 
+		     "const_double_vcvt_power_of_two_reciprocal" "Dt,Dt,Dt")))]
+  "TARGET_32BIT && TARGET_HARD_FLOAT && TARGET_VFP3 && !flag_rounding_math 
+  && !TARGET_VFP_SINGLE"
+  "@
+  vmov.f32\\t%0, %1\;vcvt.f64.<FCVTI32typename>\\t%P0, %P0, %v2
+  vmov.f32\\t%0, %1\;vcvt.f64.<FCVTI32typename>\\t%P0, %P0, %v2
+  vmov.f64\\t%P0, %1, %1\; vcvt.f64.<FCVTI32typename>\\t%P0, %P0, %v2"
+ [(set_attr "predicable" "no")
+  (set_attr "type" "f_cvt")
+  (set_attr "length" "8")]
+)
 
 ;; Store multiple insn used in function prologue.
-
 (define_insn "*push_multi_vfp"
   [(match_parallel 2 "multi_register_push"
     [(set (match_operand:BLK 0 "memory_operand" "=m")

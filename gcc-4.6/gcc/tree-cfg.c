@@ -28,7 +28,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "basic-block.h"
 #include "output.h"
 #include "flags.h"
-#include "input.h"
 #include "function.h"
 #include "ggc.h"
 #include "langhooks.h"
@@ -46,7 +45,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "value-prof.h"
 #include "pointer-set.h"
 #include "tree-inline.h"
-#include "l-ipo.h"
 
 /* This file contains functions for building the Control Flow Graph (CFG)
    for a function tree.  */
@@ -762,59 +760,22 @@ same_line_p (location_t locus1, location_t locus2)
           && strcmp (from.file, to.file) == 0);
 }
 
-/* Assign a unique discriminator value to instructions in block BB that
-   have the same LOCUS as its predecessor block.  */
+/* Assign a unique discriminator value to block BB if it begins at the same
+   LOCUS as its predecessor block.  */
 
 static void
 assign_discriminator (location_t locus, basic_block bb)
 {
   gimple first_in_to_bb, last_in_to_bb;
-  int discriminator = 0;
 
-  if (locus == UNKNOWN_LOCATION)
+  if (locus == 0 || bb->discriminator != 0)
     return;
 
-  if (has_discriminator (locus))
-    locus = map_discriminator_location (locus);
-
-  /* Check the locus of the first (non-label) instruction in the block.  */
   first_in_to_bb = first_non_label_stmt (bb);
-  if (first_in_to_bb)
-    {
-      location_t first_locus = gimple_location (first_in_to_bb);
-      if (! has_discriminator (first_locus)
-	  && same_line_p (locus, first_locus))
-	discriminator = next_discriminator_for_locus (locus);
-    }
-
-  /* If the first instruction doesn't trigger a discriminator, check the
-     last instruction of the block.  This catches the case where the
-     increment portion of a for loop is placed at the end of the loop
-     body.  */
-  if (discriminator == 0)
-    {
-      last_in_to_bb = last_stmt (bb);
-      if (last_in_to_bb)
-	{
-	   location_t last_locus = gimple_location (last_in_to_bb);
-	   if (! has_discriminator (last_locus)
-	       && same_line_p (locus, last_locus))
-	     discriminator = next_discriminator_for_locus (locus);
-	}
-    }
-
-  if (discriminator != 0)
-    {
-      location_t new_locus = location_with_discriminator (locus, discriminator);
-      gimple_stmt_iterator gsi;
-
-      for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
-	{
-	  gimple stmt = gsi_stmt (gsi);
-	  if (same_line_p (locus, gimple_location (stmt)))
-	    gimple_set_location (stmt, new_locus);
-	}
-    }
+  last_in_to_bb = last_stmt (bb);
+  if ((first_in_to_bb && same_line_p (locus, gimple_location (first_in_to_bb)))
+      || (last_in_to_bb && same_line_p (locus, gimple_location (last_in_to_bb))))
+    bb->discriminator = next_discriminator_for_locus (locus);
 }
 
 /* Create the edges for a GIMPLE_COND starting at block BB.  */
@@ -2090,7 +2051,11 @@ gimple_dump_cfg (FILE *file, int flags)
 {
   if (flags & TDF_DETAILS)
     {
-      dump_function_header (file, current_function_decl, flags);
+      const char *funcname
+	= lang_hooks.decl_printable_name (current_function_decl, 2);
+
+      fputc ('\n', file);
+      fprintf (file, ";; Function %s\n\n", funcname);
       fprintf (file, ";; \n%d basic blocks, %d edges, last basic block %d.\n\n",
 	       n_basic_blocks, n_edges, last_basic_block);
 
@@ -2936,8 +2901,7 @@ verify_types_in_gimple_reference (tree expr, bool require_lvalue)
       /* Verify if the reference array element types are compatible.  */
       if (TREE_CODE (expr) == ARRAY_REF
 	  && !useless_type_conversion_p (TREE_TYPE (expr),
-					 TREE_TYPE (TREE_TYPE (op)))
-          && !L_IPO_COMP_MODE)
+					 TREE_TYPE (TREE_TYPE (op))))
 	{
 	  error ("type mismatch in array reference");
 	  debug_generic_stmt (TREE_TYPE (expr));
@@ -3082,7 +3046,26 @@ verify_gimple_call (gimple stmt)
   tree fntype;
   unsigned i;
 
-  if (TREE_CODE (fn) != OBJ_TYPE_REF
+  if (gimple_call_internal_p (stmt))
+    {
+      if (fn)
+	{
+	  error ("gimple call has two targets");
+	  debug_generic_stmt (fn);
+	  return true;
+	}
+    }
+  else
+    {
+      if (!fn)
+	{
+	  error ("gimple call has no target");
+	  return true;
+	}
+    }
+
+  if (fn
+      && TREE_CODE (fn) != OBJ_TYPE_REF
       && !is_gimple_val (fn))
     {
       error ("invalid function in gimple call");
@@ -3090,9 +3073,10 @@ verify_gimple_call (gimple stmt)
       return true;
     }
 
-  if (!POINTER_TYPE_P (TREE_TYPE  (fn))
-      || (TREE_CODE (TREE_TYPE (TREE_TYPE (fn))) != FUNCTION_TYPE
-	  && TREE_CODE (TREE_TYPE (TREE_TYPE (fn))) != METHOD_TYPE))
+  if (fn
+      && (!POINTER_TYPE_P (TREE_TYPE  (fn))
+	  || (TREE_CODE (TREE_TYPE (TREE_TYPE (fn))) != FUNCTION_TYPE
+	      && TREE_CODE (TREE_TYPE (TREE_TYPE (fn))) != METHOD_TYPE)))
     {
       error ("non-function in gimple call");
       return true;
@@ -3112,8 +3096,12 @@ verify_gimple_call (gimple stmt)
       return true;
     }
 
-  fntype = TREE_TYPE (TREE_TYPE (fn));
-  if (gimple_call_lhs (stmt)
+  if (fn)
+    fntype = TREE_TYPE (TREE_TYPE (fn));
+  else
+    fntype = NULL_TREE;
+  if (fntype
+      && gimple_call_lhs (stmt)
       && !useless_type_conversion_p (TREE_TYPE (gimple_call_lhs (stmt)),
 				     TREE_TYPE (fntype))
       /* ???  At least C++ misses conversions at assignments from
@@ -3122,8 +3110,7 @@ verify_gimple_call (gimple stmt)
 	 returning java.lang.Object.
 	 For now simply allow arbitrary pointer type conversions.  */
       && !(POINTER_TYPE_P (TREE_TYPE (gimple_call_lhs (stmt)))
-	   && POINTER_TYPE_P (TREE_TYPE (fntype)))
-      && !L_IPO_COMP_MODE)
+	   && POINTER_TYPE_P (TREE_TYPE (fntype))))
     {
       error ("invalid conversion in gimple call");
       debug_generic_stmt (TREE_TYPE (gimple_call_lhs (stmt)));
@@ -3486,6 +3473,44 @@ verify_gimple_assign_binary (gimple stmt)
 	return false;
       }
 
+    case WIDEN_LSHIFT_EXPR:
+      {
+        if (!INTEGRAL_TYPE_P (lhs_type)
+            || !INTEGRAL_TYPE_P (rhs1_type)
+            || TREE_CODE (rhs2) != INTEGER_CST
+            || (2 * TYPE_PRECISION (rhs1_type) > TYPE_PRECISION (lhs_type)))
+          {
+            error ("type mismatch in widening vector shift expression");
+            debug_generic_expr (lhs_type);
+            debug_generic_expr (rhs1_type);
+            debug_generic_expr (rhs2_type);
+            return true;
+          }
+
+        return false;
+      }
+
+    case VEC_WIDEN_LSHIFT_HI_EXPR:
+    case VEC_WIDEN_LSHIFT_LO_EXPR:
+      {
+        if (TREE_CODE (rhs1_type) != VECTOR_TYPE
+            || TREE_CODE (lhs_type) != VECTOR_TYPE
+            || !INTEGRAL_TYPE_P (TREE_TYPE (rhs1_type))
+            || !INTEGRAL_TYPE_P (TREE_TYPE (lhs_type))
+            || TREE_CODE (rhs2) != INTEGER_CST
+            || (2 * TYPE_PRECISION (TREE_TYPE (rhs1_type))
+                > TYPE_PRECISION (TREE_TYPE (lhs_type))))
+          {
+            error ("type mismatch in widening vector shift expression");
+            debug_generic_expr (lhs_type);
+            debug_generic_expr (rhs1_type);
+            debug_generic_expr (rhs2_type);
+            return true;
+          }
+
+        return false;
+      }
+
     case PLUS_EXPR:
     case MINUS_EXPR:
       {
@@ -3587,7 +3612,7 @@ do_pointer_plus_expr_check:
     case WIDEN_MULT_EXPR:
       if (TREE_CODE (lhs_type) != INTEGER_TYPE)
 	return true;
-      return ((2 * TYPE_PRECISION (rhs1_type) != TYPE_PRECISION (lhs_type))
+      return ((2 * TYPE_PRECISION (rhs1_type) > TYPE_PRECISION (lhs_type))
 	      || (TYPE_PRECISION (rhs1_type) != TYPE_PRECISION (rhs2_type)));
 
     case WIDEN_SUM_EXPR:
@@ -3680,7 +3705,7 @@ verify_gimple_assign_ternary (gimple stmt)
 	   && !FIXED_POINT_TYPE_P (rhs1_type))
 	  || !useless_type_conversion_p (rhs1_type, rhs2_type)
 	  || !useless_type_conversion_p (lhs_type, rhs3_type)
-	  || 2 * TYPE_PRECISION (rhs1_type) != TYPE_PRECISION (lhs_type)
+	  || 2 * TYPE_PRECISION (rhs1_type) > TYPE_PRECISION (lhs_type)
 	  || TYPE_PRECISION (rhs1_type) != TYPE_PRECISION (rhs2_type))
 	{
 	  error ("type mismatch in widening multiply-accumulate expression");
@@ -3725,9 +3750,7 @@ verify_gimple_assign_single (gimple stmt)
   tree rhs1_type = TREE_TYPE (rhs1);
   bool res = false;
 
-  if (!useless_type_conversion_p (lhs_type, rhs1_type)
-      /* Relax for LIPO. TODO add structural or name check.  */
-      && !L_IPO_COMP_MODE)
+  if (!useless_type_conversion_p (lhs_type, rhs1_type))
     {
       error ("non-trivial conversion at assignment");
       debug_generic_expr (lhs_type);
@@ -3905,8 +3928,7 @@ verify_gimple_return (gimple stmt)
 	  && DECL_BY_REFERENCE (SSA_NAME_VAR (op))))
     op = TREE_TYPE (op);
 
-  if (!useless_type_conversion_p (restype, TREE_TYPE (op))
-      && !L_IPO_COMP_MODE)
+  if (!useless_type_conversion_p (restype, TREE_TYPE (op)))
     {
       error ("invalid conversion in return statement");
       debug_generic_stmt (restype);
@@ -4155,10 +4177,6 @@ verify_stmt (gimple_stmt_iterator *gsi)
   gimple stmt = gsi_stmt (*gsi);
   int lp_nr;
 
-  /* TODO: Disable for now.  */
-  if (L_IPO_COMP_MODE)
-    return false;
-
   if (is_gimple_omp (stmt))
     {
       /* OpenMP directives are validated by the FE and never operated
@@ -4174,9 +4192,10 @@ verify_stmt (gimple_stmt_iterator *gsi)
      didn't see a function declaration before the call.  */
   if (is_gimple_call (stmt))
     {
-      tree decl;
+      tree fn, decl;
 
-      if (!is_gimple_call_addr (gimple_call_fn (stmt)))
+      fn = gimple_call_fn (stmt);
+      if (fn && !is_gimple_call_addr (fn))
 	{
 	  error ("invalid function in call statement");
 	  return true;
@@ -4580,13 +4599,7 @@ gimple_verify_flow_info (void)
       if (gimple_code (stmt) == GIMPLE_LABEL)
 	continue;
 
-      /* FIXME: there does seem to be an overassertion in eh
-         edge verification -- triggered by -fdyn-ipa: after eh
-         cleanup, there might not be an direct edge from a BB
-         to the parent try block's catch region, but the catch
-         region is still reachable.  */ 
-      if (!flag_dyn_ipa)
-        err |= verify_eh_edges (stmt);
+      err |= verify_eh_edges (stmt);
 
       if (is_ctrl_stmt (stmt))
 	{
@@ -7464,28 +7477,12 @@ extract_true_false_edges_from_block (basic_block b,
     }
 }
 
-static bool
-gate_warn_function_return (void)
-{
-  /* FIXME - Disable this warning if there were errors upstream
-     (Google ref 4487457).  We should not even get this far down in
-     the optimization process after a syntax error in the parser.
-     However, bailing out right after parsing causes many regressions
-     in the testsuite, because tests expect more errors from the
-     compiler.
-
-     To avoid invasive changes in 4.6, the trunk variant of this fix
-     is described in http://gcc.gnu.org/ml/gcc/2011-06/msg00213.html.  */
-  return !seen_error ();
-}
-
-
 struct gimple_opt_pass pass_warn_function_return =
 {
  {
   GIMPLE_PASS,
   "*warn_function_return",		/* name */
-  gate_warn_function_return,		/* gate */
+  NULL,					/* gate */
   execute_warn_function_return,		/* execute */
   NULL,					/* sub */
   NULL,					/* next */
@@ -7569,6 +7566,8 @@ do_warn_unused_result (gimple_seq seq)
 	case GIMPLE_CALL:
 	  if (gimple_call_lhs (g))
 	    break;
+	  if (gimple_call_internal_p (g))
+	    break;
 
 	  /* This is a naked call, as opposed to a GIMPLE_CALL with an
 	     LHS.  All calls whose value is ignored should be
@@ -7630,3 +7629,4 @@ struct gimple_opt_pass pass_warn_unused_result =
     0,					/* todo_flags_finish */
   }
 };
+

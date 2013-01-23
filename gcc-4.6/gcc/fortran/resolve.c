@@ -1053,6 +1053,7 @@ resolve_structure_cons (gfc_expr *expr, int init)
 	  && comp->ts.u.cl->length->expr_type == EXPR_CONSTANT
 	  && cons->expr->ts.u.cl && cons->expr->ts.u.cl->length
 	  && cons->expr->ts.u.cl->length->expr_type == EXPR_CONSTANT
+	  && cons->expr->rank != 0
 	  && mpz_cmp (cons->expr->ts.u.cl->length->value.integer,
 		      comp->ts.u.cl->length->value.integer) != 0)
 	{
@@ -1451,7 +1452,7 @@ resolve_intrinsic (gfc_symbol *sym, locus *loc)
 
   if (sym->intmod_sym_id)
     isym = gfc_intrinsic_function_by_id ((gfc_isym_id) sym->intmod_sym_id);
-  else
+  else if (!sym->attr.subroutine)
     isym = gfc_find_function (sym->name);
 
   if (isym)
@@ -7086,11 +7087,18 @@ resolve_allocate_deallocate (gfc_code *code, const char *fcn)
 
 		      if (pr->next && qr->next)
 			{
+			  int i;
 			  gfc_array_ref *par = &(pr->u.ar);
 			  gfc_array_ref *qar = &(qr->u.ar);
-			  if (gfc_dep_compare_expr (par->start[0],
-						    qar->start[0]) != 0)
-			      break;
+
+			  for (i=0; i<par->dimen; i++)
+			    {
+			      if ((par->start[i] != NULL
+				   || qar->start[i] != NULL)
+				  && gfc_dep_compare_expr (par->start[i],
+							   qar->start[i]) != 0)
+				goto break_label;
+			    }
 			}
 		    }
 		  else
@@ -7102,6 +7110,8 @@ resolve_allocate_deallocate (gfc_code *code, const char *fcn)
 		  pr = pr->next;
 		  qr = qr->next;
 		}
+	    break_label:
+	      ;
 	    }
 	}
     }
@@ -9699,7 +9709,8 @@ build_default_init_expr (gfc_symbol *sym)
       || sym->attr.data
       || sym->module
       || sym->attr.cray_pointee
-      || sym->attr.cray_pointer)
+      || sym->attr.cray_pointer
+      || sym->assoc)
     return NULL;
 
   /* Now we'll try to build an initializer expression.  */
@@ -9814,6 +9825,26 @@ build_default_init_expr (gfc_symbol *sym)
 	  gfc_free_expr (init_expr);
 	  init_expr = NULL;
 	}
+      if (!init_expr && gfc_option.flag_init_character == GFC_INIT_CHARACTER_ON
+	  && sym->ts.u.cl->length)
+	{
+	  gfc_actual_arglist *arg;
+	  init_expr = gfc_get_expr ();
+	  init_expr->where = sym->declared_at;
+	  init_expr->ts = sym->ts;
+	  init_expr->expr_type = EXPR_FUNCTION;
+	  init_expr->value.function.isym =
+		gfc_intrinsic_function_by_id (GFC_ISYM_REPEAT);
+	  init_expr->value.function.name = "repeat";
+	  arg = gfc_get_actual_arglist ();
+	  arg->expr = gfc_get_character_expr (sym->ts.kind, &sym->declared_at,
+					      NULL, 1);
+	  arg->expr->value.character.string[0]
+		= gfc_option.flag_init_character_value;
+	  arg->next = gfc_get_actual_arglist ();
+	  arg->next->expr = gfc_copy_expr (sym->ts.u.cl->length);
+	  init_expr->value.function.actual = arg;
+	}
       break;
 	  
     default:
@@ -9840,10 +9871,12 @@ apply_default_init_local (gfc_symbol *sym)
   if (init == NULL)
     return;
 
-  /* For saved variables, we don't want to add an initializer at 
-     function entry, so we just add a static initializer.  */
+  /* For saved variables, we don't want to add an initializer at function
+     entry, so we just add a static initializer. Note that automatic variables
+     are stack allocated even with -fno-automatic.  */
   if (sym->attr.save || sym->ns->save_all 
-      || gfc_option.flag_max_stack_var_size == 0)
+      || (gfc_option.flag_max_stack_var_size == 0
+	  && (!sym->attr.dimension || !is_non_constant_shape_array (sym))))
     {
       /* Don't clobber an existing initializer!  */
       gcc_assert (sym->value == NULL);
@@ -12885,10 +12918,9 @@ gfc_impure_variable (gfc_symbol *sym)
     }
 
   proc = sym->ns->proc_name;
-  if (sym->attr.dummy && gfc_pure (proc)
-	&& ((proc->attr.subroutine && sym->attr.intent == INTENT_IN)
-		||
-	     proc->attr.function))
+  if (sym->attr.dummy
+      && ((proc->attr.subroutine && sym->attr.intent == INTENT_IN)
+	  || proc->attr.function))
     return 1;
 
   /* TODO: Sort out what can be storage associated, if anything, and include

@@ -82,7 +82,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "ggc.h"
 #include "cfgloop.h"
 #include "params.h"
-#include "tree-pretty-print.h"
 
 #ifdef XCOFF_DEBUGGING_INFO
 #include "xcoffout.h"		/* Needed for external data
@@ -134,6 +133,9 @@ static int last_linenum;
 /* Last discriminator written to assembly.  */
 static int last_discriminator;
 
+/* Discriminator of current block.  */
+static int discriminator;
+
 /* Highest line number in current block.  */
 static int high_block_linenum;
 
@@ -143,10 +145,9 @@ static int high_function_linenum;
 /* Filename of last NOTE.  */
 static const char *last_filename;
 
-/* Override filename, line number, and discriminator.  */
+/* Override filename and line number.  */
 static const char *override_filename;
 static int override_linenum;
-static int override_discriminator;
 
 /* Whether to force emission of a line note before the next insn.  */
 static bool force_source_line = false;
@@ -1537,7 +1538,7 @@ final_start_function (rtx first ATTRIBUTE_UNUSED, FILE *file,
 
   last_filename = locator_file (prologue_locator);
   last_linenum = locator_line (prologue_locator);
-  last_discriminator = 0;
+  last_discriminator = discriminator = 0;
 
   high_block_linenum = high_function_linenum = last_linenum;
 
@@ -1577,13 +1578,9 @@ final_start_function (rtx first ATTRIBUTE_UNUSED, FILE *file,
   if (warn_frame_larger_than
     && get_frame_size () > frame_larger_than_size)
   {
-      /* Issue a warning.  (WARN_FRAME_LARGER_THAN_EXTRA_TEXT is
-         provided by configuration.  The way extra text is added
-         here may prevent localization from working properly.
-         It's totally broken.)  */
+      /* Issue a warning */
       warning (OPT_Wframe_larger_than_,
-               "the frame size of %wd bytes is larger than %wd bytes"
-               WARN_FRAME_LARGER_THAN_EXTRA_TEXT,
+               "the frame size of %wd bytes is larger than %wd bytes",
                get_frame_size (), frame_larger_than_size);
   }
 
@@ -1626,7 +1623,7 @@ profile_function (FILE *file ATTRIBUTE_UNUSED)
       int align = MIN (BIGGEST_ALIGNMENT, LONG_TYPE_SIZE);
       switch_to_section (data_section);
       ASM_OUTPUT_ALIGN (file, floor_log2 (align / BITS_PER_UNIT));
-      targetm.asm_out.internal_label (file, "LP", FUNC_LABEL_ID (cfun));
+      targetm.asm_out.internal_label (file, "LP", current_function_funcdef_no);
       assemble_integer (const0_rtx, LONG_TYPE_SIZE / BITS_PER_UNIT, align, 1);
     }
 
@@ -1639,7 +1636,7 @@ profile_function (FILE *file ATTRIBUTE_UNUSED)
     ASM_OUTPUT_REG_PUSH (file, REGNO (chain));
 #endif
 
-  FUNCTION_PROFILER (file, FUNC_LABEL_ID (cfun));
+  FUNCTION_PROFILER (file, current_function_funcdef_no);
 
 #ifdef ASM_OUTPUT_REG_PUSH
   if (chain && REG_P (chain))
@@ -1674,54 +1671,6 @@ final_end_function (void)
     dwarf2out_end_epilogue (last_linenum, last_filename);
 }
 
-
-/* Dumper helper for basic block information. FILE is the assembly
-   output file, and INSN is the instruction being emitted.  */
-
-static void
-dump_basic_block_info (FILE *file, rtx insn, basic_block *start_to_bb,
-                       basic_block *end_to_bb, int bb_map_size, int *bb_seqn)
-{
-  basic_block bb;
-
-  if (!flag_debug_asm)
-    return;
-
-  if (INSN_UID (insn) < bb_map_size
-      && (bb = start_to_bb[INSN_UID (insn)]) != NULL)
-    {
-      edge e;
-      edge_iterator ei;
-
-      fprintf (file, "# BLOCK %d", bb->index);
-      if (bb->frequency)
-        fprintf (file, " freq:%d", bb->frequency);
-      if (bb->count)
-        fprintf (file, " count:" HOST_WIDEST_INT_PRINT_DEC,
-                 bb->count);
-      fprintf (file, " seq:%d", (*bb_seqn)++);
-      fprintf (file, "\n# PRED:");
-      FOR_EACH_EDGE (e, ei, bb->preds)
-        {
-          dump_edge_info (file, e, 0);
-        }
-      fprintf (file, "\n");
-    }
-  if (INSN_UID (insn) < bb_map_size
-      && (bb = end_to_bb[INSN_UID (insn)]) != NULL)
-    {
-      edge e;
-      edge_iterator ei;
-
-      fprintf (asm_out_file, "# SUCC:");
-      FOR_EACH_EDGE (e, ei, bb->succs)
-       {
-         dump_edge_info (asm_out_file, e, 1);
-       }
-      fprintf (file, "\n");
-    }
-}
-
 /* Output assembler code for some insns: all or part of a function.
    For description of args, see `final_start_function', above.  */
 
@@ -1731,12 +1680,6 @@ final (rtx first, FILE *file, int optimize_p)
   rtx insn;
   int max_uid = 0;
   int seen = 0;
-
-  /* Used for -dA dump.  */
-  basic_block *start_to_bb = NULL;
-  basic_block *end_to_bb = NULL;
-  int bb_map_size = 0;
-  int bb_seqn = 0;
 
   last_ignored_compare = 0;
 
@@ -1762,21 +1705,6 @@ final (rtx first, FILE *file, int optimize_p)
 
   CC_STATUS_INIT;
 
-  if (flag_debug_asm)
-    {
-      basic_block bb;
-
-      bb_map_size = get_max_uid () + 1;
-      start_to_bb = XCNEWVEC (basic_block, bb_map_size);
-      end_to_bb = XCNEWVEC (basic_block, bb_map_size);
-
-      FOR_EACH_BB_REVERSE (bb)
-	{
-	  start_to_bb[INSN_UID (BB_HEAD (bb))] = bb;
-	  end_to_bb[INSN_UID (BB_END (bb))] = bb;
-	}
-    }
-
   /* Output the insns.  */
   for (insn = first; insn;)
     {
@@ -1792,15 +1720,7 @@ final (rtx first, FILE *file, int optimize_p)
 	insn_current_address = INSN_ADDRESSES (INSN_UID (insn));
 #endif /* HAVE_ATTR_length */
 
-      dump_basic_block_info (file, insn, start_to_bb, end_to_bb,
-                             bb_map_size, &bb_seqn);
       insn = final_scan_insn (insn, file, optimize_p, 0, &seen);
-    }
-
-  if (flag_debug_asm)
-    {
-      free (start_to_bb);
-      free (end_to_bb);
     }
 }
 
@@ -1937,6 +1857,10 @@ final_scan_insn (rtx insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 	  if (targetm.asm_out.unwind_emit)
 	    targetm.asm_out.unwind_emit (asm_out_file, insn);
 
+	  if (flag_debug_asm)
+	    fprintf (asm_out_file, "\t%s basic block %d\n",
+		     ASM_COMMENT_START, NOTE_BASIC_BLOCK (insn)->index);
+
 	  if ((*seen & (SEEN_EMITTED | SEEN_BB)) == SEEN_BB)
 	    {
 	      *seen |= SEEN_EMITTED;
@@ -1944,6 +1868,8 @@ final_scan_insn (rtx insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 	    }
 	  else
 	    *seen |= SEEN_BB;
+
+          discriminator = NOTE_BASIC_BLOCK (insn)->discriminator;
 
 	  break;
 
@@ -2029,8 +1955,6 @@ final_scan_insn (rtx insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 		{
 		  override_filename = LOCATION_FILE (*locus_ptr);
 		  override_linenum = LOCATION_LINE (*locus_ptr);
-		  override_discriminator =
-		      get_discriminator_from_locus (*locus_ptr);
 		}
 	    }
 	  break;
@@ -2064,14 +1988,11 @@ final_scan_insn (rtx insn, FILE *file, int optimize_p ATTRIBUTE_UNUSED,
 		{
 		  override_filename = LOCATION_FILE (*locus_ptr);
 		  override_linenum = LOCATION_LINE (*locus_ptr);
-		  override_discriminator =
-		      get_discriminator_from_locus (*locus_ptr);
 		}
 	      else
 		{
 		  override_filename = NULL;
 		  override_linenum = 0;
-		  override_discriminator = 0;
 		}
 	    }
 	  break;
@@ -2815,19 +2736,16 @@ notice_source_line (rtx insn, bool *is_stmt)
 {
   const char *filename;
   int linenum;
-  int discriminator;
 
   if (override_filename)
     {
       filename = override_filename;
       linenum = override_linenum;
-      discriminator = override_discriminator;
     }
   else
     {
       filename = insn_file (insn);
       linenum = insn_line (insn);
-      discriminator = insn_discriminator (insn);
     }
 
   if (filename == NULL)
@@ -4330,37 +4248,13 @@ debug_free_queue (void)
       symbol_queue_size = 0;
     }
 }
-
-/* List the call graph profiled edges whise value is greater than
-   PARAM_NOTE_CGRAPH_SECTION_EDGE_THRESHOLD in the
-   "gnu.callgraph.text" section. */
-static void
-dump_cgraph_profiles (void)
-{
-  struct cgraph_node *node = cgraph_node (current_function_decl);
-  struct cgraph_edge *e;
-  struct cgraph_node *callee;
-
-  for (e = node->callees; e != NULL; e = e->next_callee)
-    {
-      if (e->count <= PARAM_VALUE (PARAM_NOTE_CGRAPH_SECTION_EDGE_THRESHOLD))
-        continue;
-      callee = e->callee;
-      fprintf (asm_out_file, "\t.string \"%s\"\n",
-               IDENTIFIER_POINTER (decl_assembler_name (callee->decl)));
-      fprintf (asm_out_file, "\t.string \"" HOST_WIDEST_INT_PRINT_DEC "\"\n",
-               e->count);
-    }
-}
-
+
 /* Turn the RTL into assembly.  */
 static unsigned int
 rest_of_handle_final (void)
 {
   rtx x;
   const char *fnname;
-  char *profile_fnname;
-  unsigned int flags;
 
   /* Get the function's name, as described by its RTL.  This may be
      different from the DECL_NAME name used in the source file.  */
@@ -4420,22 +4314,6 @@ rest_of_handle_final (void)
     targetm.asm_out.destructor (XEXP (DECL_RTL (current_function_decl), 0),
 				decl_fini_priority_lookup
 				  (current_function_decl));
-
-  /* With -fcallgraph-profiles-sections, add ".gnu.callgraph.text" section
-     for storing profiling information. */
-  if (flag_callgraph_profiles_sections
-      && flag_profile_use
-      && cgraph_node (current_function_decl) != NULL
-      && (cgraph_node (current_function_decl))->callees != NULL)
-    {
-      flags = SECTION_DEBUG | SECTION_EXCLUDE;
-      asprintf (&profile_fnname, ".gnu.callgraph.text.%s", fnname);
-      switch_to_section (get_section (profile_fnname, flags, NULL));
-      fprintf (asm_out_file, "\t.string \"Function %s\"\n", fnname);
-      dump_cgraph_profiles ();
-      free (profile_fnname);
-    }
-
   return 0;
 }
 
@@ -4506,11 +4384,23 @@ rest_of_clean_state (void)
 	}
       else
 	{
+	  const char *aname;
+	  struct cgraph_node *node = cgraph_node (current_function_decl);
+
+	  aname = (IDENTIFIER_POINTER
+		   (DECL_ASSEMBLER_NAME (current_function_decl)));
+	  fprintf (final_output, "\n;; Function (%s) %s\n\n", aname,
+	     node->frequency == NODE_FREQUENCY_HOT
+	     ? " (hot)"
+	     : node->frequency == NODE_FREQUENCY_UNLIKELY_EXECUTED
+	     ? " (unlikely executed)"
+	     : node->frequency == NODE_FREQUENCY_EXECUTED_ONCE
+	     ? " (executed once)"
+	     : "");
+
 	  flag_dump_noaddr = flag_dump_unnumbered = 1;
 	  if (flag_compare_debug_opt || flag_compare_debug)
 	    dump_flags |= TDF_NOUID;
-	  dump_function_header (final_output, current_function_decl,
-				dump_flags);
 	  final_insns_dump_p = true;
 
 	  for (insn = get_insns (); insn; insn = NEXT_INSN (insn))

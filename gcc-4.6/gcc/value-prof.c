@@ -46,10 +46,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "timevar.h"
 #include "tree-pass.h"
 #include "pointer-set.h"
-#include "langhooks.h"
-#include "params.h"
-#include "l-ipo.h"
-#include "profile.h"
 
 /* In this file value profile based optimizations are placed.  Currently the
    following optimizations are implemented (for more detailed descriptions
@@ -304,10 +300,6 @@ dump_histogram_value (FILE *dump_file, histogram_value hist)
 	}
       fprintf (dump_file, ".\n");
       break;
-    case HIST_TYPE_INDIR_CALL_TOPN:
-      fprintf (dump_file, "Indirect call -- top N\n");
-      /* TODO add more elaborate dumping code.  */
-      break;
    }
 }
 
@@ -471,10 +463,9 @@ check_counter (gimple stmt, const char * name,
               : DECL_SOURCE_LOCATION (current_function_decl);
       if (flag_profile_correction)
         {
-          if (flag_opt_info >= OPT_INFO_MAX)
-            inform (locus, "correcting inconsistent value profile: %s "
-		    "profiler overall count (%d) does not match BB count "
-                    "(%d)", name, (int)*all, (int)bb_count);
+	  inform (locus, "correcting inconsistent value profile: "
+		  "%s profiler overall count (%d) does not match BB count "
+                  "(%d)", name, (int)*all, (int)bb_count);
 	  *all = bb_count;
 	  if (*count > *all)
             *count = *all;
@@ -493,83 +484,6 @@ check_counter (gimple stmt, const char * name,
 	}
     }
 
-  return false;
-}
-
-/* The overall number of invocations of the counter should match
-   execution count of basic block.  Report it as error rather than
-   internal error as it might mean that user has misused the profile
-   somehow.  STMT is the indiret call, COUNT1 and COUNT2 are counts
-   of two top targets, and ALL is the enclosing basic block execution
-   count.  */
-
-static bool
-check_ic_counter (gimple stmt, gcov_type *count1, gcov_type *count2,
-                  gcov_type all)
-{
-  location_t locus;
-  if (*count1 > all && flag_profile_correction)
-    {
-      if (flag_opt_info >= OPT_INFO_MAX)
-        {
-          locus = (stmt != NULL)
-                  ? gimple_location (stmt)
-                  : DECL_SOURCE_LOCATION (current_function_decl);
-          inform (locus, "Correcting inconsistent value profile: "
-                  "ic (topn) profiler top target count (%ld) exceeds "
-                  "BB count (%ld)", (long)*count1, (long)all);
-        }
-      *count1 = all;
-    }
-  if (*count2 > all && flag_profile_correction)
-    {
-      if (flag_opt_info >= OPT_INFO_MAX)
-        {
-          locus = (stmt != NULL)
-                  ? gimple_location (stmt)
-                  : DECL_SOURCE_LOCATION (current_function_decl);
-          inform (locus, "Correcting inconsistent value profile: "
-                  "ic (topn) profiler second target count (%ld) exceeds "
-    	          "BB count (%ld)", (long)*count2, (long)all);
-        }
-      *count2 = all;
-    }
-  
-  if (*count2 > *count1)
-    {
-      if (flag_opt_info >= OPT_INFO_MAX)
-        {
-          locus = (stmt != NULL)
-                  ? gimple_location (stmt)
-                  : DECL_SOURCE_LOCATION (current_function_decl);
-          inform (locus, "Corrupted topn ic value profile: "
-    	          "first target count (%ld) is less than the second "
-    	          "target count (%ld)", (long)*count1, (long)*count2);
-        }
-      return true;
-    }
-
-  if (*count1 + *count2 > all)
-    {
-      /* If (COUNT1 + COUNT2) is greater than ALL by less than around 10% then
-	 just fix COUNT2 up so that (COUNT1 + COUNT2) equals ALL.  */
-      if ((*count1 + *count2 - all) < (all >> 3))
-	*count2 = all - *count1;
-      else
-	{
-          if (flag_opt_info >= OPT_INFO_MAX)
-            {
-	      locus = (stmt != NULL)
-	        ? gimple_location (stmt)
-	        : DECL_SOURCE_LOCATION (current_function_decl);
-	      inform (locus,
-                      "Corrupted topn ic value profile: top two targets's"
-                      " total count (%ld) exceeds bb count (%ld)",
-                      (long)(*count1 + *count2), (long)all);
-            }
-	  return true;
-	}
-    }
   return false;
 }
 
@@ -628,14 +542,6 @@ gimple_value_profile_transformations (void)
   if (changed)
     {
       counts_to_freqs ();
-      /* Value profile transformations may change inline parameters
-         a lot (e.g., indirect call promotion introduces new direct calls).
-         The update is also needed to avoid compiler ICE -- when MULTI
-         target icall promotion happens, the caller's size may become
-         negative when the promoted direct calls get promoted.  */
-      /* Guard this for LIPO for now.  */
-      if (L_IPO_COMP_MODE)
-        compute_inline_parameters (cgraph_node (current_function_decl));
     }
 
   return changed;
@@ -1153,190 +1059,35 @@ gimple_mod_subtract_transform (gimple_stmt_iterator *si)
   return true;
 }
 
-static VEC(cgraph_node_ptr, heap) *cgraph_node_map = NULL;
+static struct cgraph_node** pid_map = NULL;
 
-/* Initialize map from FUNCDEF_NO to CGRAPH_NODE.  */
+/* Initialize map of pids (pid -> cgraph node) */
 
-void
-init_node_map (void)
+static void
+init_pid_map (void)
 {
   struct cgraph_node *n;
 
-  if (L_IPO_COMP_MODE)
+  if (pid_map != NULL)
     return;
 
-  if (get_last_funcdef_no ())
-    VEC_safe_grow_cleared (cgraph_node_ptr, heap,
-                           cgraph_node_map, get_last_funcdef_no ());
+  pid_map = XCNEWVEC (struct cgraph_node*, cgraph_max_pid);
 
   for (n = cgraph_nodes; n; n = n->next)
     {
-      if (DECL_STRUCT_FUNCTION (n->decl))
-        VEC_replace (cgraph_node_ptr, cgraph_node_map,
-                     DECL_STRUCT_FUNCTION (n->decl)->funcdef_no, n);
+      if (n->pid != -1)
+	pid_map [n->pid] = n;
     }
-}
-
-/* Delete the CGRAPH_NODE_MAP.  */
-
-void
-del_node_map (void)
-{
-  if (L_IPO_COMP_MODE)
-    return;
-
-   VEC_free (cgraph_node_ptr, heap, cgraph_node_map);
-   cgraph_node_map = NULL;
 }
 
 /* Return cgraph node for function with pid */
 
 static inline struct cgraph_node*
-find_func_by_funcdef_no (int func_id)
+find_func_by_pid (int	pid)
 {
-  int max_id = get_last_funcdef_no ();
-  if (func_id >= max_id || VEC_index (cgraph_node_ptr,
-                                      cgraph_node_map,
-                                      func_id) == NULL)
-    {
-      if (flag_profile_correction)
-        {
-          if (flag_opt_info >= OPT_INFO_MED)
-            inform (DECL_SOURCE_LOCATION (current_function_decl),
-                "Inconsistent profile: indirect call target (%d) does not exist", func_id);
-        }
-      else
-        error ("Inconsistent profile: indirect call target (%d) does not exist", func_id);
+  init_pid_map ();
 
-      return NULL;
-    }
-
-  return VEC_index (cgraph_node_ptr, cgraph_node_map, func_id);
-}
-
-/* Initialize map of gids (gid -> cgraph node) */
-
-static htab_t gid_map = NULL;
-
-typedef struct func_gid_entry
-{
-  struct cgraph_node *node;
-  unsigned HOST_WIDEST_INT gid;
-} func_gid_entry_t;
-
-/* Hash function for function global unique ids.  */
-
-static hashval_t 
-htab_gid_hash (const void * ent)
-{
-  const func_gid_entry_t *const entry = (const func_gid_entry_t *) ent;
-  return entry->gid;
-}
-
-/* Hash table equality function for function global unique ids.  */
-
-static int
-htab_gid_eq (const void *ent1, const void * ent2)
-{
-  const func_gid_entry_t *const entry1 = (const func_gid_entry_t *) ent1;
-  const func_gid_entry_t *const entry2 = (const func_gid_entry_t *) ent2;
-  return entry1->gid == entry2->gid;
-}
-
-static void
-htab_gid_del (void *ent)
-{
-  func_gid_entry_t *const entry = (func_gid_entry_t *) ent;
-  free (entry);
-}
-
-/* Initialize the global unique id map for functions.  */
-
-static void
-init_gid_map (void)
-{
-  struct cgraph_node *n;
-
-  gcc_assert (!gid_map);
-
-  gid_map
-      = htab_create (10, htab_gid_hash, htab_gid_eq, htab_gid_del);
-
-  for (n = cgraph_nodes; n; n = n->next)
-    {
-      func_gid_entry_t ent, *entp;
-      func_gid_entry_t **slot;
-      struct function *f;
-      ent.node = n;
-      f = DECL_STRUCT_FUNCTION (n->decl);
-      /* Do not care to indirect call promote a function with id.  */
-      if (!f || DECL_ABSTRACT (n->decl))
-        continue;
-      /* The global function id computed at profile-use time
-         is slightly different from the one computed in
-         instrumentation runtime -- for the latter, the intra-
-         module function ident is 1 based while in profile-use
-         phase, it is zero based. See get_next_funcdef_no in
-         function.c.  */
-      ent.gid = FUNC_DECL_GLOBAL_ID (DECL_STRUCT_FUNCTION (n->decl));
-      slot = (func_gid_entry_t **) htab_find_slot (gid_map, &ent, INSERT);
-
-      gcc_assert (!*slot || ((*slot)->gid == ent.gid && (*slot)->node == n));
-      if (!*slot)
-        {
-          *slot = entp = XCNEW (func_gid_entry_t);
-          entp->node = n;
-          entp->gid = ent.gid;
-        }
-    }
-}
-
-/* Initialize the global unique id map for functions.  */
-
-void
-cgraph_init_gid_map (void)
-{
-  if (!L_IPO_COMP_MODE)
-    return;
-
-  init_gid_map ();
-}
-
-/* Return cgraph node for function with global id.  */
-
-struct cgraph_node *
-find_func_by_global_id (unsigned HOST_WIDE_INT gid)
-{
-  func_gid_entry_t ent, *entp;
-
-  gcc_assert (gid_map);
-
-  ent.node = NULL;
-  ent.gid = gid;
-  entp = (func_gid_entry_t *)htab_find (gid_map, &ent);
-  if (entp)
-    return entp->node;
-  return NULL;
-}
-
-/* Perform sanity check on the indirect call target. Due to race conditions,
-   false function target may be attributed to an indirect call site. If the
-   call expression type mismatches with the target function's type, expand_call
-   may ICE. Here we only do very minimal sanity check just to make compiler happy.
-   Returns true if TARGET is considered ok for call CALL_STMT.  */
-
-static bool
-check_ic_target (gimple call_stmt, struct cgraph_node *target)
-{
-   location_t locus;
-   if (gimple_check_call_matching_types (call_stmt, target->decl))
-     return true;
-
-   locus =  gimple_location (call_stmt);
-   if (flag_opt_info >= OPT_INFO_MAX)
-     inform (locus, "Skipping target %s with mismatching types for icall ",
-             cgraph_node_name (target));
-   return false;
+  return pid_map [pid];
 }
 
 /* Do transformation
@@ -1484,12 +1235,29 @@ gimple_ic (gimple icall_stmt, struct cgraph_node *direct_call,
  */
 
 static bool
-gimple_ic_transform_single_targ (gimple stmt, histogram_value histogram)
+gimple_ic_transform (gimple stmt)
 {
+  histogram_value histogram;
   gcov_type val, count, all, bb_all;
   gcov_type prob;
+  tree callee;
   gimple modify;
   struct cgraph_node *direct_call;
+
+  if (gimple_code (stmt) != GIMPLE_CALL)
+    return false;
+
+  callee = gimple_call_fn (stmt);
+
+  if (TREE_CODE (callee) == FUNCTION_DECL)
+    return false;
+
+  if (gimple_call_internal_p (stmt))
+    return false;
+
+  histogram = gimple_histogram_value_of_type (cfun, stmt, HIST_TYPE_INDIR_CALL);
+  if (!histogram)
+    return false;
 
   val = histogram->hvalue.counters [0];
   count = histogram->hvalue.counters [1];
@@ -1511,12 +1279,9 @@ gimple_ic_transform_single_targ (gimple stmt, histogram_value histogram)
     prob = (count * REG_BR_PROB_BASE + all / 2) / all;
   else
     prob = 0;
-  direct_call = find_func_by_funcdef_no ((int)val);
+  direct_call = find_func_by_pid ((int)val);
 
   if (direct_call == NULL)
-    return false;
-
-  if (!check_ic_target (stmt, direct_call))
     return false;
 
   modify = gimple_ic (stmt, direct_call, prob, count, all);
@@ -1538,195 +1303,6 @@ gimple_ic_transform_single_targ (gimple stmt, histogram_value histogram)
   return true;
 }
 
-/* Convert indirect function call STMT into guarded direct function
-   calls. Multiple indirect call targets are supported. HISTOGRAM
-   is the target distribution for the callsite.  */
-
-static bool
-gimple_ic_transform_mult_targ (gimple stmt, histogram_value histogram)
-{
-  gcov_type val1, val2, count1, count2, all, bb_all;
-  gcov_type prob1, prob2;
-  gimple modify1, modify2;
-  struct cgraph_node *direct_call1 = 0, *direct_call2 = 0;
-  int perc_threshold, count_threshold, always_inline;
-  location_t locus;
-
-  val1 = histogram->hvalue.counters [1];
-  count1 = histogram->hvalue.counters [2];
-  val2 = histogram->hvalue.counters [3];
-  count2 = histogram->hvalue.counters [4];
-  bb_all = gimple_bb (stmt)->count;
-  all = bb_all;
-
-  gimple_remove_histogram_value (cfun, stmt, histogram);
-
-  if (count1 == 0)
-    return false;
-
-  perc_threshold = PARAM_VALUE (PARAM_ICALL_PROMOTE_PERCENT_THRESHOLD);
-  count_threshold = PARAM_VALUE (PARAM_ICALL_PROMOTE_COUNT_THRESHOLD);
-  always_inline = PARAM_VALUE (PARAM_ALWAYS_INLINE_ICALL_TARGET);
-
-  if (100 * count1 < all * perc_threshold || count1 < count_threshold)
-    return false;
-
-  if (check_ic_counter (stmt, &count1, &count2, all))
-    return false;
-
-  if (all > 0)
-    {
-      prob1 = (count1 * REG_BR_PROB_BASE + all / 2) / all;
-      if (all - count1 > 0)
-        prob2 = (count2 * REG_BR_PROB_BASE
-                 + (all - count1) / 2) / (all - count1);
-      else
-        prob2 = 0;
-    }
-  else
-    prob1 = prob2 = 0;
-
-  direct_call1 = find_func_by_global_id (val1);
-
-  if (val2 && (100 * count2 >= all * perc_threshold)
-      && count2 > count_threshold)
-    direct_call2 = find_func_by_global_id (val2);
-
-  locus = (stmt != NULL) ? gimple_location (stmt)
-      : DECL_SOURCE_LOCATION (current_function_decl);
-  if (direct_call1 == NULL
-      || !check_ic_target (stmt, direct_call1))
-    {
-      if (flag_opt_info >= OPT_INFO_MAX)
-        {
-          if (!direct_call1)
-            inform (locus, "Can not find indirect call target decl "
-                    "(%d:%d)[cnt:%u] in current module",
-                    EXTRACT_MODULE_ID_FROM_GLOBAL_ID (val1),
-                    EXTRACT_FUNC_ID_FROM_GLOBAL_ID (val1), (unsigned) count1);
-          else
-            inform (locus,
-                    "Can not find promote indirect call target decl -- type mismatch "
-                    "(%d:%d)[cnt:%u] in current module",
-                    EXTRACT_MODULE_ID_FROM_GLOBAL_ID (val1),
-                    EXTRACT_FUNC_ID_FROM_GLOBAL_ID (val1), (unsigned) count1);
-        }
-      return false;
-    }
-
-  /* Don't indirect-call promote if the target is in auxiliary module and
-     DECL_ARTIFICIAL and not TREE_PUBLIC, because we don't static-promote
-     DECL_ARTIFICIALs yet.  */
-  if (cgraph_is_auxiliary (direct_call1->decl)
-      && DECL_ARTIFICIAL (direct_call1->decl)
-      && ! TREE_PUBLIC (direct_call1->decl))
-    return false;
-
-  modify1 = gimple_ic (stmt, direct_call1, prob1, count1, all);
-  if (flag_opt_info >= OPT_INFO_MIN)
-    inform (locus, "Promote indirect call to target (call count:%u) %s",
-	    (unsigned) count1,
-	    lang_hooks.decl_printable_name (direct_call1->decl, 3));
-
-  if (always_inline && count1 >= always_inline)
-    {
-      /* TODO: should mark the call edge. */
-      DECL_DISREGARD_INLINE_LIMITS (direct_call1->decl) = 1;
-      direct_call1->local.disregard_inline_limits = 1;
-    }
-  if (dump_file)
-    {
-      fprintf (dump_file, "Indirect call -> direct call ");
-      print_generic_expr (dump_file, gimple_call_fn (stmt), TDF_SLIM);
-      fprintf (dump_file, "=> ");
-      print_generic_expr (dump_file, direct_call1->decl, TDF_SLIM);
-      fprintf (dump_file, " (module_id:%d, func_id:%d)\n",
-               EXTRACT_MODULE_ID_FROM_GLOBAL_ID (val1),
-               EXTRACT_FUNC_ID_FROM_GLOBAL_ID (val1));
-      fprintf (dump_file, "Transformation on insn:\n");
-      print_gimple_stmt (dump_file, stmt, 0, TDF_SLIM);
-      fprintf (dump_file, "==>\n");
-      print_gimple_stmt (dump_file, modify1, 0, TDF_SLIM);
-      fprintf (dump_file, "hist->count "HOST_WIDEST_INT_PRINT_DEC
-	       " hist->all "HOST_WIDEST_INT_PRINT_DEC"\n", count1, all);
-    }
-
-  if (direct_call2 && check_ic_target (stmt, direct_call2)
-      /* Don't indirect-call promote if the target is in auxiliary module and
-	 DECL_ARTIFICIAL and not TREE_PUBLIC, because we don't static-promote
-	 DECL_ARTIFICIALs yet.  */
-      && ! (cgraph_is_auxiliary (direct_call2->decl)
-	    && DECL_ARTIFICIAL (direct_call2->decl)
-	    && ! TREE_PUBLIC (direct_call2->decl)))
-    {
-      modify2 = gimple_ic (stmt, direct_call2,
-                           prob2, count2, all - count1);
-
-      if (flag_opt_info >= OPT_INFO_MIN)
-	inform (locus, "Promote indirect call to target (call count:%u) %s",
-		(unsigned) count2,
-		lang_hooks.decl_printable_name (direct_call2->decl, 3));
-
-      if (always_inline && count2 >= always_inline)
-        {
-          /* TODO: should mark the call edge.  */
-          DECL_DISREGARD_INLINE_LIMITS (direct_call2->decl) = 1;
-          direct_call2->local.disregard_inline_limits = 1;
-        }
-      if (dump_file)
-        {
-          fprintf (dump_file, "Indirect call -> direct call ");
-          print_generic_expr (dump_file, gimple_call_fn (stmt), TDF_SLIM);
-          fprintf (dump_file, "=> ");
-          print_generic_expr (dump_file, direct_call2->decl, TDF_SLIM);
-          fprintf (dump_file, " (module_id:%d, func_id:%d)\n",
-                   EXTRACT_MODULE_ID_FROM_GLOBAL_ID (val2),
-                   EXTRACT_FUNC_ID_FROM_GLOBAL_ID (val2));
-          fprintf (dump_file, "Transformation on insn\n");
-          print_gimple_stmt (dump_file, stmt, 0, TDF_SLIM);
-          fprintf (dump_file, "=>\n");
-          print_gimple_stmt (dump_file, modify2, 0, TDF_SLIM);
-          fprintf (dump_file, "hist->count "HOST_WIDEST_INT_PRINT_DEC
-                   " hist->all "HOST_WIDEST_INT_PRINT_DEC"\n", count2,
-                   all - count1);
-        }
-    }
-
-  return true;
-}
-
-/* Perform indirect call (STMT) to guarded direct function call
-   transformation using value profile data.  */
-
-static bool
-gimple_ic_transform (gimple stmt)
-{
-  histogram_value histogram;
-  tree callee;
-
-  if (gimple_code (stmt) != GIMPLE_CALL)
-    return false;
-
-  callee = gimple_call_fn (stmt);
-
-  if (TREE_CODE (callee) == FUNCTION_DECL)
-    return false;
-
-  histogram = gimple_histogram_value_of_type (cfun, stmt, HIST_TYPE_INDIR_CALL);
-  if (!histogram)
-    {
-      histogram = gimple_histogram_value_of_type (cfun, stmt,
-                                                  HIST_TYPE_INDIR_CALL_TOPN);
-      if (!histogram)
-        return false;
-    }
-
-  if (histogram->type == HIST_TYPE_INDIR_CALL)
-    return gimple_ic_transform_single_targ (stmt, histogram);
-  else
-    return gimple_ic_transform_mult_targ (stmt, histogram);
-}
-
 /* Return true if the stringop CALL with FNDECL shall be profiled.
    SIZE_ARG be set to the argument index for the size of the string
    operation.
@@ -1735,14 +1311,6 @@ static bool
 interesting_stringop_to_profile_p (tree fndecl, gimple call, int *size_arg)
 {
   enum built_in_function fcode = DECL_FUNCTION_CODE (fndecl);
-
-  /* Disable stringop collection with reuse distance instrumentation
-     or optimization.  Otherwise we end up with hard to correct profile
-     mismatches for functions where reuse distance-based transformation are
-     made.  We see a number of "memcpy" at instrumentation time and a different
-     number of "memcpy" at profile use time.  */
-  if (flag_profile_reusedist || flag_optimize_locality)
-    return false;
 
   if (fcode != BUILT_IN_MEMCPY && fcode != BUILT_IN_MEMPCPY
       && fcode != BUILT_IN_MEMSET && fcode != BUILT_IN_BZERO)
@@ -2075,6 +1643,7 @@ gimple_indirect_call_to_profile (gimple stmt, histogram_values *values)
   tree callee;
 
   if (gimple_code (stmt) != GIMPLE_CALL
+      || gimple_call_internal_p (stmt)
       || gimple_call_fndecl (stmt) != NULL_TREE)
     return;
 
@@ -2082,14 +1651,9 @@ gimple_indirect_call_to_profile (gimple stmt, histogram_values *values)
 
   VEC_reserve (histogram_value, heap, *values, 3);
 
-  if (flag_dyn_ipa)
-    VEC_quick_push (histogram_value, *values,
-		    gimple_alloc_histogram_value (cfun, HIST_TYPE_INDIR_CALL_TOPN,
-						  stmt, callee));
-  else
-    VEC_quick_push (histogram_value, *values,
-		    gimple_alloc_histogram_value (cfun, HIST_TYPE_INDIR_CALL,
-						  stmt, callee));
+  VEC_quick_push (histogram_value, *values,
+		  gimple_alloc_histogram_value (cfun, HIST_TYPE_INDIR_CALL,
+						stmt, callee));
 
   return;
 }
@@ -2179,7 +1743,7 @@ gimple_find_values_to_profile (histogram_values *values)
 	  break;
 
  	case HIST_TYPE_INDIR_CALL:
-	  hist->n_counters = 3;
+ 	  hist->n_counters = 3;
 	  break;
 
 	case HIST_TYPE_AVERAGE:
@@ -2188,10 +1752,6 @@ gimple_find_values_to_profile (histogram_values *values)
 
 	case HIST_TYPE_IOR:
 	  hist->n_counters = 1;
-	  break;
-
- 	case HIST_TYPE_INDIR_CALL_TOPN:
-          hist->n_counters = (GCOV_ICALL_TOPN_VAL << 2) + 1;
 	  break;
 
 	default:
@@ -2205,3 +1765,4 @@ gimple_find_values_to_profile (histogram_values *values)
         }
     }
 }
+

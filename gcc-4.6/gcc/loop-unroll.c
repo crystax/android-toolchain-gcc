@@ -34,7 +34,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "hashtab.h"
 #include "recog.h"
 #include "target.h"
-#include "diagnostic.h"
 
 /* This pass performs loop unrolling and peeling.  We only perform these
    optimizations on innermost loops (with single exception) because
@@ -153,109 +152,6 @@ static void combine_var_copies_in_loop_exit (struct var_to_expand *,
 					     basic_block);
 static rtx get_expansion (struct var_to_expand *);
 
-static void
-report_unroll_peel(struct loop *loop, location_t locus)
-{
-  struct niter_desc *desc;
-  int niters = 0;
-  char iter_str[50];
-
-  desc = get_simple_loop_desc (loop);
-
-  if (desc->const_iter)
-    niters = desc->niter;
-  else if (loop->header->count)
-    niters = expected_loop_iterations (loop);
-
-  sprintf(iter_str,", %s iterations %d",
-          desc->const_iter?"const":"average",
-          niters);
-  inform (locus, "%s%s loop by %d (header execution count %d%s)",
-          loop->lpt_decision.decision == LPT_PEEL_COMPLETELY ?
-            "Completely " : "",
-          loop->lpt_decision.decision == LPT_PEEL_SIMPLE ?
-            "Peel" : "Unroll",
-          loop->lpt_decision.times,
-          (int)loop->header->count,
-          loop->lpt_decision.decision == LPT_PEEL_COMPLETELY ?
-            "" : iter_str);
-}
-
-/* Determine whether LOOP contains floating-point computation. */
-static bool
-loop_has_FP_comp(struct loop *loop)
-{
-  rtx set, dest;
-  basic_block *body, bb;
-  unsigned i;
-  rtx insn;
-
-  body = get_loop_body (loop);
-  for (i = 0; i < loop->num_nodes; i++)
-    {
-      bb = body[i];
-
-      FOR_BB_INSNS (bb, insn)
-      {
-        set = single_set (insn);
-        if (!set)
-          continue;
-
-        dest = SET_DEST (set);
-        if (FLOAT_MODE_P (GET_MODE (dest)))
-        {
-          free (body);
-          return true;
-        }
-      }
-    }
-  free (body);
-  return false;
-}
-
-/* This returns a bit vector */
-typedef enum {
-  NO_LIMIT = 0,
-  LIMIT_UNROLL = 0x1,
-  LIMIT_PEEL = 0x2,
-  LIMIT_BOTH = 0x3
-} limit_type;
-
-extern int cgraph_codesize_estimate;
-
-/* Determine whether LOOP unrolling/peeling should be constrained based
-   on code footprint estimates. */
-static limit_type
-limit_code_size(struct loop *loop)
-{
-  unsigned size_threshold;
-  limit_type result = NO_LIMIT;
-  int result_int = 0;
-
-  if (!flag_dyn_ipa)
-    return NO_LIMIT;
-
-  gcc_assert (cgraph_codesize_estimate >= 0);
-
-  /* Ignore FP loops, which are more likely to benefit heavily from
-     unrolling. */
-  if (loop_has_FP_comp(loop))
-    return NO_LIMIT;
-
-  size_threshold = PARAM_VALUE (PARAM_UNROLLPEEL_CODESIZE_THRESHOLD);
-  if (cgraph_codesize_estimate <= (int)size_threshold)
-    return NO_LIMIT;
-
-  if (flag_ripa_peel_size_limit)
-    result_int |= LIMIT_PEEL;
-
-  if (flag_ripa_unroll_size_limit)
-    result_int |= LIMIT_UNROLL;
-
-  result = (limit_type)result_int;
-  return result;
-}
-
 /* Unroll and/or peel (depending on FLAGS) LOOPS.  */
 void
 unroll_and_peel_loops (int flags)
@@ -263,8 +159,6 @@ unroll_and_peel_loops (int flags)
   struct loop *loop;
   bool check;
   loop_iterator li;
-
-  record_loop_exits();
 
   /* First perform complete loop peeling (it is almost surely a win,
      and affects parameters for further decision a lot).  */
@@ -340,18 +234,16 @@ peel_loops_completely (int flags)
 {
   struct loop *loop;
   loop_iterator li;
-  location_t locus;
 
   /* Scan the loops, the inner ones first.  */
   FOR_EACH_LOOP (li, loop, LI_FROM_INNERMOST)
     {
       loop->lpt_decision.decision = LPT_NONE;
-      locus = get_loop_location(loop);
 
       if (dump_file)
-	fprintf (dump_file, "\n;; *** Considering loop %d for complete peeling at BB %d from %s:%d ***\n",
-                 loop->num, loop->header->index, LOCATION_FILE(locus),
-                 LOCATION_LINE(locus));
+	fprintf (dump_file,
+		 "\n;; *** Considering loop %d for complete peeling ***\n",
+		 loop->num);
 
       loop->ninsns = num_loop_insns (loop);
 
@@ -361,11 +253,6 @@ peel_loops_completely (int flags)
 
       if (loop->lpt_decision.decision == LPT_PEEL_COMPLETELY)
 	{
-          if (flag_opt_info >= OPT_INFO_MIN)
-            {
-              report_unroll_peel(loop, locus);
-            }
-
 	  peel_loop_completely (loop);
 #ifdef ENABLE_CHECKING
 	  verify_dominators (CDI_DOMINATORS);
@@ -381,19 +268,14 @@ decide_unrolling_and_peeling (int flags)
 {
   struct loop *loop;
   loop_iterator li;
-  location_t locus;
-  limit_type limit;
 
   /* Scan the loops, inner ones first.  */
   FOR_EACH_LOOP (li, loop, LI_FROM_INNERMOST)
     {
       loop->lpt_decision.decision = LPT_NONE;
-      locus = get_loop_location(loop);
 
       if (dump_file)
-	fprintf (dump_file, "\n;; *** Considering loop %d at BB %d from %s:%d ***\n",
-                 loop->num, loop->header->index, LOCATION_FILE(locus),
-                 LOCATION_LINE(locus));
+	fprintf (dump_file, "\n;; *** Considering loop %d ***\n", loop->num);
 
       /* Do not peel cold areas.  */
       if (optimize_loop_for_size_p (loop))
@@ -423,45 +305,16 @@ decide_unrolling_and_peeling (int flags)
       loop->ninsns = num_loop_insns (loop);
       loop->av_ninsns = average_num_loop_insns (loop);
 
-      /* Determine whether to limit code size growth from unrolling and
-         peeling. This is currently enabled only under LIPO (dynamic IPA)
-         where we have a partial call graph. It is not applied to loops
-         with constant trip counts, as it is easier to determine the
-         profitability of unrolling and peeling such loops. */
-      limit = limit_code_size(loop);
-      if (limit != NO_LIMIT)
-	{
-	  if (dump_file)
-            {
-	      fprintf (dump_file, ";; Due to large code size footprint estimate, limit ");
-              if (limit == (LIMIT_UNROLL|LIMIT_PEEL))
-	        fprintf (dump_file, "unrolling and peeling\n");
-              else if (limit == LIMIT_UNROLL)
-	        fprintf (dump_file, "unrolling\n");
-              else
-	        fprintf (dump_file, "peeling\n");
-            }
-	}
-
       /* Try transformations one by one in decreasing order of
 	 priority.  */
 
       decide_unroll_constant_iterations (loop, flags);
-      if (loop->lpt_decision.decision == LPT_NONE
-          && !(limit & LIMIT_UNROLL))
+      if (loop->lpt_decision.decision == LPT_NONE)
 	decide_unroll_runtime_iterations (loop, flags);
-      if (loop->lpt_decision.decision == LPT_NONE
-          && !(limit & LIMIT_UNROLL))
+      if (loop->lpt_decision.decision == LPT_NONE)
 	decide_unroll_stupid (loop, flags);
-      if (loop->lpt_decision.decision == LPT_NONE
-          && !(limit & LIMIT_PEEL))
+      if (loop->lpt_decision.decision == LPT_NONE)
 	decide_peel_simple (loop, flags);
-
-      if (flag_opt_info >= OPT_INFO_MIN
-          && loop->lpt_decision.decision != LPT_NONE)
-        {
-          report_unroll_peel(loop, locus);
-        }
     }
 }
 
@@ -471,23 +324,15 @@ static void
 decide_peel_once_rolling (struct loop *loop, int flags ATTRIBUTE_UNUSED)
 {
   struct niter_desc *desc;
-  unsigned max_peeled_insns;
-
-  if (profile_status == PROFILE_READ)
-    max_peeled_insns =
-      (unsigned) PARAM_VALUE (PARAM_MAX_ONCE_PEELED_INSNS_FEEDBACK);
-  else
-    max_peeled_insns = (unsigned) PARAM_VALUE (PARAM_MAX_ONCE_PEELED_INSNS);
 
   if (dump_file)
     fprintf (dump_file, "\n;; Considering peeling once rolling loop\n");
 
   /* Is the loop small enough?  */
-  if (max_peeled_insns < loop->ninsns)
+  if ((unsigned) PARAM_VALUE (PARAM_MAX_ONCE_PEELED_INSNS) < loop->ninsns)
     {
       if (dump_file)
-	fprintf (dump_file, ";; Not considering loop, is too big (%d > %u)\n",
-                 loop->ninsns, max_peeled_insns);
+	fprintf (dump_file, ";; Not considering loop, is too big\n");
       return;
     }
 
@@ -511,14 +356,13 @@ decide_peel_once_rolling (struct loop *loop, int flags ATTRIBUTE_UNUSED)
   if (dump_file)
     fprintf (dump_file, ";; Decided to peel exactly once rolling loop\n");
   loop->lpt_decision.decision = LPT_PEEL_COMPLETELY;
-  loop->lpt_decision.times = 0;
 }
 
 /* Decide whether the LOOP is suitable for complete peeling.  */
 static void
 decide_peel_completely (struct loop *loop, int flags ATTRIBUTE_UNUSED)
 {
-  unsigned npeel, max_insns, max_peel;
+  unsigned npeel;
   struct niter_desc *desc;
 
   if (dump_file)
@@ -549,30 +393,16 @@ decide_peel_completely (struct loop *loop, int flags ATTRIBUTE_UNUSED)
       return;
     }
 
-  if (profile_status == PROFILE_READ)
-    {
-      max_insns =
-        (unsigned) PARAM_VALUE (PARAM_MAX_COMPLETELY_PEELED_INSNS_FEEDBACK);
-      max_peel =
-        (unsigned) PARAM_VALUE (PARAM_MAX_COMPLETELY_PEEL_TIMES_FEEDBACK);
-    }
-  else
-    {
-      max_insns = (unsigned) PARAM_VALUE (PARAM_MAX_COMPLETELY_PEELED_INSNS);
-      max_peel = (unsigned) PARAM_VALUE (PARAM_MAX_COMPLETELY_PEEL_TIMES);
-    }
-
   /* npeel = number of iterations to peel.  */
-  npeel = max_insns / loop->ninsns;
-  if (npeel > max_peel)
-    npeel = max_peel;
+  npeel = PARAM_VALUE (PARAM_MAX_COMPLETELY_PEELED_INSNS) / loop->ninsns;
+  if (npeel > (unsigned) PARAM_VALUE (PARAM_MAX_COMPLETELY_PEEL_TIMES))
+    npeel = PARAM_VALUE (PARAM_MAX_COMPLETELY_PEEL_TIMES);
 
   /* Is the loop small enough?  */
   if (!npeel)
     {
       if (dump_file)
-	fprintf (dump_file, ";; Not considering loop, is too big, npeel=%u.\n",
-                 npeel);
+	fprintf (dump_file, ";; Not considering loop, is too big\n");
       return;
     }
 
@@ -605,9 +435,8 @@ decide_peel_completely (struct loop *loop, int flags ATTRIBUTE_UNUSED)
 
   /* Success.  */
   if (dump_file)
-    fprintf (dump_file, ";; Decided to peel loop completely npeel %u\n", npeel);
+    fprintf (dump_file, ";; Decided to peel loop completely\n");
   loop->lpt_decision.decision = LPT_PEEL_COMPLETELY;
-  loop->lpt_decision.times = desc->niter;
 }
 
 /* Peel all iterations of LOOP, remove exit edges and cancel the loop
@@ -717,9 +546,6 @@ decide_unroll_constant_iterations (struct loop *loop, int flags)
     nunroll = nunroll_by_av;
   if (nunroll > (unsigned) PARAM_VALUE (PARAM_MAX_UNROLL_TIMES))
     nunroll = PARAM_VALUE (PARAM_MAX_UNROLL_TIMES);
-
-  if (targetm.loop_unroll_adjust)
-    nunroll = targetm.loop_unroll_adjust (nunroll, loop);
 
   /* Skip big loops.  */
   if (nunroll <= 1)

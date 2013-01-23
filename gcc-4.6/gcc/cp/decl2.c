@@ -101,6 +101,10 @@ static GTY(()) VEC(tree,gc) *deferred_fns;
    sure are defined.  */
 static GTY(()) VEC(tree,gc) *no_linkage_decls;
 
+/* Nonzero if we're done parsing and into end-of-file activities.  */
+
+int at_eof;
+
 
 
 /* Return a member function type (a METHOD_TYPE), given FNTYPE (a
@@ -1084,21 +1088,6 @@ is_late_template_attribute (tree attr, tree decl)
   if (is_attribute_p ("weak", name))
     return true;
 
-  /* In general, the lock attributes with arguments need to be applied at
-     instantiation time as they could reference other members of the class.
-     However, if the purpose field of the arguments is an error_mark_node,
-     the arguments of the attributes have not been parsed yet. (See
-     cp_parser_save_attribute_arg_list in parser.c.) And in that case,
-     we want it to be applied at the definition time so that it will be
-     parsed at the end of the class/template definition.  */
-  if (is_lock_attribute_with_args (name))
-    {
-      if (!args || TREE_PURPOSE (args) == error_mark_node)
-        return false;
-      else
-        return true;
-    }
-
   /* If any of the arguments are dependent expressions, we can't evaluate
      the attribute until instantiation time.  */
   for (arg = args; arg; arg = TREE_CHAIN (arg))
@@ -1196,9 +1185,9 @@ save_template_attributes (tree *attr_p, tree *decl_p)
 
   old_attrs = *q;
 
-  /* Place the late attributes at the beginning of the attribute
+  /* Merge the late attributes at the beginning with the attribute
      list.  */
-  TREE_CHAIN (tree_last (late_attrs)) = *q;
+  late_attrs = merge_attributes (late_attrs, *q);
   *q = late_attrs;
 
   if (!DECL_P (*decl_p) && *decl_p == TYPE_MAIN_VARIANT (*decl_p))
@@ -1288,13 +1277,6 @@ cp_check_const_attributes (tree attributes)
       for (arg = TREE_VALUE (attr); arg; arg = TREE_CHAIN (arg))
 	{
 	  tree expr = TREE_VALUE (arg);
-          /* If this is a lock attribute and purpose field of the arguments
-             is an error_mark_node, the arguments of the attributes have not
-             been parsed yet. (See cp_parser_save_attribute_arg_list in
-             parser.c.)  */
-          if (is_lock_attribute_with_args (TREE_PURPOSE (attr))
-              && TREE_PURPOSE (arg) == error_mark_node)
-            break;
 	  if (EXPR_P (expr))
 	    TREE_VALUE (arg) = maybe_constant_value (expr);
 	}
@@ -2850,13 +2832,11 @@ start_static_storage_duration_function (unsigned count)
 {
   tree type;
   tree body;
-  char id[sizeof (SSDF_IDENTIFIER) + 1 /* '\0' */ + 64];
+  char id[sizeof (SSDF_IDENTIFIER) + 1 /* '\0' */ + 32];
 
   /* Create the identifier for this function.  It will be of the form
      SSDF_IDENTIFIER_<number>.  */
   sprintf (id, "%s_%u", SSDF_IDENTIFIER, count);
-  if (L_IPO_IS_AUXILIARY_MODULE)
-    sprintf (id, "%s_%u", id, current_module_id);
 
   type = build_function_type_list (void_type_node,
 				   integer_type_node, integer_type_node,
@@ -3268,9 +3248,6 @@ prune_vars_needing_no_initialization (tree *vars)
 	  continue;
 	}
 
-      gcc_assert (!L_IPO_IS_AUXILIARY_MODULE
-                  || varpool_is_auxiliary (varpool_node (decl)));
-
       /* This variable is going to need initialization and/or
 	 finalization, so we add it to the list.  */
       *var = TREE_CHAIN (t);
@@ -3406,8 +3383,7 @@ cxx_callgraph_analyze_expr (tree *tp, int *walk_subtrees ATTRIBUTE_UNUSED)
     case VAR_DECL:
       if (DECL_CONTEXT (t)
 	  && flag_use_repository
-	  && TREE_CODE (DECL_CONTEXT (t)) == FUNCTION_DECL
-	  && !cgraph_is_auxiliary (DECL_CONTEXT (t)))
+	  && TREE_CODE (DECL_CONTEXT (t)) == FUNCTION_DECL)
 	/* If we need a static variable in a function, then we
 	   need the containing function.  */
 	mark_decl_referenced (DECL_CONTEXT (t));
@@ -3648,15 +3624,6 @@ no_linkage_error (tree decl)
 	       "is used but never defined", decl, t);
 }
 
-/* Clear the list of deferred functions.  */
-void
-cp_clear_deferred_fns (void)
-{
-  VEC_free (tree, gc, deferred_fns);
-  keyed_classes = NULL;
-  VEC_free (tree, gc, no_linkage_decls);
-}
-
 /* Collect declarations from all namespaces relevant to SOURCE_FILE.  */
 
 static void
@@ -3665,19 +3632,66 @@ collect_all_refs (const char *source_file)
   collect_ada_namespace (global_namespace, source_file);
 }
 
-/* After parsing, process pending declarations such as
-   pending template instantiations.  */
+/* This routine is called at the end of compilation.
+   Its job is to create all the code needed to initialize and
+   destroy the global aggregates.  We do the destruction
+   first, since that way we only need to reverse the decls once.  */
 
 void
-cp_process_pending_declarations (location_t locus)
+cp_write_global_declarations (void)
 {
-  tree vars, decl;
+  tree vars;
   bool reconsider;
   size_t i;
+  location_t locus;
   unsigned ssdf_count = 0;
   int retries = 0;
+  tree decl;
+  struct pointer_set_t *candidates;
 
-  timevar_start (TV_PHASE_DEFERRED);
+  locus = input_location;
+  at_eof = 1;
+
+  /* Bad parse errors.  Just forget about it.  */
+  if (! global_bindings_p () || current_class_type
+      || !VEC_empty (tree,decl_namespace_list))
+    return;
+
+  if (pch_file)
+    c_common_write_pch ();
+
+  /* Handle -fdump-ada-spec[-slim] */
+  if (dump_enabled_p (TDI_ada))
+    {
+      if (get_dump_file_info (TDI_ada)->flags & TDF_SLIM)
+	collect_source_ref (main_input_filename);
+      else
+	collect_source_refs (global_namespace);
+
+      dump_ada_specs (collect_all_refs, cpp_check);
+    }
+
+  /* FIXME - huh?  was  input_line -= 1;*/
+
+  /* We now have to write out all the stuff we put off writing out.
+     These include:
+
+       o Template specializations that we have not yet instantiated,
+	 but which are needed.
+       o Initialization and destruction for non-local objects with
+	 static storage duration.  (Local objects with static storage
+	 duration are initialized when their scope is first entered,
+	 and are cleaned up via atexit.)
+       o Virtual function tables.
+
+     All of these may cause others to be needed.  For example,
+     instantiating one function may cause another to be needed, and
+     generating the initializer for an object may cause templates to be
+     instantiated, etc., etc.  */
+
+  timevar_push (TV_VARCONST);
+
+  emit_support_tinfos ();
 
   do
     {
@@ -3919,25 +3933,6 @@ cp_process_pending_declarations (location_t locus)
     }
   while (reconsider);
 
-  if (L_IPO_IS_AUXILIARY_MODULE)
-    {
-      tree fndecl;
-      int i;
-      gcc_assert (flag_dyn_ipa && L_IPO_COMP_MODE);
-
-      /* Do some cleanup -- we do not really need static init function
-         to be created for auxiliary modules -- they are created to keep
-         funcdef_no consistent between profile use and profile gen.  */
-      for (i = 0; VEC_iterate (tree, ssdf_decls, i, fndecl); ++i)
-        /* Such ssdf_decls are not called from GLOBAL ctor/dtor, mark
-	   them reachable to avoid being eliminated too early before
-	   gimplication.  */
-        cgraph_mark_reachable_node (cgraph_node (fndecl));
-
-      ssdf_decls = NULL;
-      return;
-    }
-
   /* All used inline functions must have a definition at this point.  */
   FOR_EACH_VEC_ELT (tree, deferred_fns, i, decl)
     {
@@ -3990,10 +3985,7 @@ cp_process_pending_declarations (location_t locus)
 
   /* We're done with the splay-tree now.  */
   if (priority_info_map)
-    {
-      splay_tree_delete (priority_info_map);
-      priority_info_map = NULL;
-    }
+    splay_tree_delete (priority_info_map);
 
   /* Generate any missing aliases.  */
   maybe_apply_pending_pragma_weaks ();
@@ -4002,79 +3994,10 @@ cp_process_pending_declarations (location_t locus)
      linkage now.  */
   pop_lang_context ();
 
-  ssdf_decls = NULL;
-}
-
-/* This routine is called at the end of compilation.
-   Its job is to create all the code needed to initialize and
-   destroy the global aggregates.  We do the destruction
-   first, since that way we only need to reverse the decls once.  */
-
-void
-cp_write_global_declarations (void)
-{
-  bool reconsider = false;
-  location_t locus;
-  struct pointer_set_t *candidates;
-
-  at_eof = 1;
-
-  /* Bad parse errors.  Just forget about it.  */
-  if (! global_bindings_p () || current_class_type
-      || !VEC_empty (tree,decl_namespace_list))
-    return;
-
-  locus = input_location;
-
-  if (pch_file)
-    c_common_write_pch ();
-
-  /* Handle -fdump-ada-spec[-slim] */
-  if (dump_enabled_p (TDI_ada))
-    {
-      if (get_dump_file_info (TDI_ada)->flags & TDF_SLIM)
-	collect_source_ref (main_input_filename);
-      else
-	collect_source_refs (global_namespace);
-
-      dump_ada_specs (collect_all_refs, cpp_check);
-    }
-
-  /* FIXME - huh?  was  input_line -= 1;*/
-
-  /* We now have to write out all the stuff we put off writing out.
-     These include:
-
-       o Template specializations that we have not yet instantiated,
-	 but which are needed.
-       o Initialization and destruction for non-local objects with
-	 static storage duration.  (Local objects with static storage
-	 duration are initialized when their scope is first entered,
-	 and are cleaned up via atexit.)
-       o Virtual function tables.
-
-     All of these may cause others to be needed.  For example,
-     instantiating one function may cause another to be needed, and
-     generating the initializer for an object may cause templates to be
-     instantiated, etc., etc.  */
-
-  timevar_push (TV_VARCONST);
-
-  emit_support_tinfos ();
-
-  if (!L_IPO_COMP_MODE)
-    cp_process_pending_declarations (locus);
-
   /* Collect candidates for Java hidden aliases.  */
   candidates = collect_candidates_for_java_method_aliases ();
 
-  timevar_stop (TV_PHASE_DEFERRED);
-  timevar_start (TV_PHASE_CGRAPH);
-
   cgraph_finalize_compilation_unit ();
-
-  timevar_stop (TV_PHASE_CGRAPH);
-  timevar_start (TV_PHASE_CHECK_DBGINFO);
 
   /* Now, issue warnings about static, but not defined, functions,
      etc., and emit debugging information.  */
@@ -4111,6 +4034,8 @@ cp_write_global_declarations (void)
       }
   }
 
+  timevar_pop (TV_VARCONST);
+
   if (flag_detailed_statistics)
     {
       dump_tree_statistics ();
@@ -4121,8 +4046,6 @@ cp_write_global_declarations (void)
 #ifdef ENABLE_CHECKING
   validate_conversion_obstack ();
 #endif /* ENABLE_CHECKING */
-
-  timevar_stop (TV_PHASE_CHECK_DBGINFO);
 }
 
 /* FN is an OFFSET_REF, DOTSTAR_EXPR or MEMBER_REF indicating the

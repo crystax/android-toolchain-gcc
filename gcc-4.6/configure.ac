@@ -1,5 +1,5 @@
 #   Copyright (C) 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000,
-#   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+#   2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013
 #   Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify it
@@ -679,9 +679,6 @@ case "${target}" in
   arm-*-elf* | strongarm-*-elf* | xscale-*-elf* | arm*-*-eabi* )
     noconfigdirs="$noconfigdirs target-libffi target-qthreads"
     libgloss_dir=arm
-    ;;
-  arm*-*-linux-androideabi)
-    noconfigdirs="$noconfigdirs target-libiberty"
     ;;
   arm*-*-linux-gnueabi)
     noconfigdirs="$noconfigdirs target-qthreads"
@@ -1675,12 +1672,14 @@ fi
 if test "x$with_ppl" != xno; then
   if test "x$pwllib" = x; then
     saved_LDFLAGS="$LDFLAGS"
-    LDFLAGS="$LDFLAGS $ppllibs"
+    LDFLAGS="$LDFLAGS $ppllibs $with_host_libstdcxx"
     AC_CHECK_LIB(pwl,PWL_handle_timeout,[pwllib="-lpwl"])
     LDFLAGS="$saved_LDFLAGS"
   fi
 
-  ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx"
+  dnl ppllibs="$ppllibs -lppl_c -lppl $pwllib -lgmpxx $with_host_libstdcxx"
+  dnl zuav: there is no pwl lib in ppl 1.0
+  ppllibs="$ppllibs -lppl_c -lppl -lgmpxx $with_host_libstdcxx"
 
   if test "$enable_ppl_version_check" != no; then
     saved_CFLAGS="$CFLAGS"
@@ -1738,8 +1737,6 @@ enable_lto=yes; default_enable_lto=yes)
 
 ACX_ELF_TARGET_IFELSE([# ELF platforms build the lto-plugin always.
   build_lto_plugin=yes
-  # Allow ELF platforms to build the function_reordering_plugin always.
-  build_function_reordering_plugin=yes
 ],[if test x"$default_enable_lto" = x"yes" ; then
     case $target in
       *-apple-darwin9 | *-cygwin* | *-mingw*) ;;
@@ -1867,11 +1864,6 @@ if test -d ${srcdir}/gcc; then
       extra_host_libiberty_configure_flags=--enable-shared
     fi
   fi
-  if test "${build_function_reordering_plugin}" = "yes" ; then
-    configdirs="$configdirs function_reordering_plugin"
-    extra_host_libiberty_configure_flags=--enable-shared
-  fi
-
   AC_SUBST(extra_host_libiberty_configure_flags)
 
   missing_languages=`echo ",$enable_languages," | sed -e s/,all,/,/ -e s/,c,/,/ `

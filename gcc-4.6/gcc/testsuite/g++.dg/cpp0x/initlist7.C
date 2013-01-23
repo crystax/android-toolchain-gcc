@@ -1,5 +1,5 @@
 // PR c++/37932
-// { dg-options "-std=c++0x -pedantic-errors" }
+// { dg-options "-std=c++0x" }
 
 typedef enum { AA=1, BB=2 } my_enum;
 

@@ -92,7 +92,6 @@ DEF_VEC_ALLOC_O(cxx_saved_binding,gc);
 extern tree identifier_type_value (tree);
 extern void set_identifier_type_value (tree, tree);
 extern void pop_binding (tree, tree);
-extern void pop_global_binding (tree, cxx_binding*);
 extern tree constructor_name (tree);
 extern bool constructor_name_p (tree, tree);
 
@@ -327,7 +326,6 @@ extern tree remove_hidden_names (tree);
 extern tree lookup_qualified_name (tree, tree, bool, bool);
 extern tree lookup_name_nonclass (tree);
 extern tree lookup_name_innermost_nonclass_level (tree);
-extern tree lookup_name_in_func_params (tree, tree);
 extern bool is_local_extern (tree);
 extern tree lookup_function_nonclass (tree, VEC(tree,gc) *, bool);
 extern void push_local_binding (tree, tree, int);

@@ -51,12 +51,6 @@
 #endif
 
 
-/* Define to enable prefix canonicalization. */
-#ifndef USED_FOR_TARGET
-#undef ENABLE_CANONICAL_PREFIXES
-#endif
-
-
 /* Define if you want more run-time sanity checks. This one gets a grab bag of
    miscellaneous but relatively cheap checks. */
 #ifndef USED_FOR_TARGET
@@ -1784,12 +1778,6 @@
 /* Enable general extensions on Solaris.  */
 #ifndef __EXTENSIONS__
 # undef __EXTENSIONS__
-#endif
-
-
-/* Define to be extra text for frame size warnings. */
-#ifndef USED_FOR_TARGET
-#undef WARN_FRAME_LARGER_THAN_EXTRA_TEXT
 #endif
 
 

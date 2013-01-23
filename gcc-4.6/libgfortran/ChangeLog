@@ -1,3 +1,21 @@
+2012-10-21  Thomas König  <tkoenig@gcc.gnu.org>
+
+	PR libfortran/54736
+	Backport from trunk
+	* runtime/environ.c (search_unit):  Correct logic
+	for binary search.
+	(mark_single):  Fix index errors.
+
+2012-05-12  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/53310
+	* intrinsics/eoshift2.c (eoshift2): Do not leak
+	memory by allocating it in the loop.
+
+2012-03-01  Release Manager
+
+	* GCC 4.6.3 released.
+
 2011-11-20  Andreas Tobler  <andreast@fgznet.ch>
 
 	* configure: Regenerate.

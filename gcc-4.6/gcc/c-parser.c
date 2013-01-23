@@ -57,7 +57,6 @@ along with GCC; see the file COPYING3.  If not see
 #include "target.h"
 #include "cgraph.h"
 #include "plugin.h"
-#include "tree-threadsafe-analyze.h"
 
 
 /* Initialization routine for this file.  */
@@ -1152,7 +1151,6 @@ static struct c_expr c_parser_expression (c_parser *);
 static struct c_expr c_parser_expression_conv (c_parser *);
 static VEC(tree,gc) *c_parser_expr_list (c_parser *, bool, bool,
 					 VEC(tree,gc) **);
-static tree c_parser_attr_arg_list (c_parser *);
 static void c_parser_omp_construct (c_parser *);
 static void c_parser_omp_threadprivate (c_parser *);
 static void c_parser_omp_barrier (c_parser *);
@@ -1418,7 +1416,6 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
   tree all_prefix_attrs;
   bool diagnosed_no_specs = false;
   location_t here = c_parser_peek_token (parser)->location;
-  bool orig_fndef_ok = fndef_ok;
 
   if (static_assert_ok
       && c_parser_next_token_is_keyword (parser, RID_STATIC_ASSERT))
@@ -1571,7 +1568,6 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
     {
       struct c_declarator *declarator;
       bool dummy = false;
-      timevar_id_t tv;
       tree fnbody;
       /* Declaring either one or more declarators (in which case we
 	 should diagnose if there were no declaration specifiers) or a
@@ -1627,11 +1623,6 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 		  maybe_warn_string_init (TREE_TYPE (d), init);
 		  finish_decl (d, init_loc, init.value,
 		      	       init.original_type, asm_name);
-                  /* Check for and warn about self-initialization if
-                     -Wself-assign is enabled. Don't warn if there is
-                     already an error for the initializer.  */
-                  if (warn_self_assign && DECL_INITIAL (d) != error_mark_node)
-                    check_for_self_assign (here, d, init.value);
 		}
 	    }
 	  else
@@ -1677,18 +1668,9 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 	    }
 	  else
 	    {
-              /* Allow the lock attributes to be applied to function
-                 definitions.  */
-              if (c_parser_next_token_is_not (parser, CPP_OPEN_BRACE)
-                  || !orig_fndef_ok
-                  || !postfix_attrs
-                  || ((postfix_attrs = extract_lock_attributes (postfix_attrs))
-                      == NULL_TREE))
-                {
-                  c_parser_error (parser, "expected %<,%> or %<;%>");
-                  c_parser_skip_to_end_of_block_or_statement (parser);
-                  return;
-                }
+	      c_parser_error (parser, "expected %<,%> or %<;%>");
+	      c_parser_skip_to_end_of_block_or_statement (parser);
+	      return;
 	    }
 	}
       else if (!fndef_ok)
@@ -1715,13 +1697,6 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 	    c_pop_function_context ();
 	  break;
 	}
-
-      if (DECL_DECLARED_INLINE_P (current_function_decl))
-        tv = TV_PARSE_INLINE;
-      else
-        tv = TV_PARSE_FUNC;
-      timevar_push (tv);
-
       /* Parse old-style parameter declarations.  ??? Attributes are
 	 not allowed to start declaration specifiers here because of a
 	 syntax conflict between a function declaration with attribute
@@ -1760,8 +1735,6 @@ c_parser_declaration_or_fndef (c_parser *parser, bool fndef_ok,
 	  add_stmt (fnbody);
 	  finish_function ();
 	}
-
-      timevar_pop (tv);
       break;
     }
 }
@@ -2214,14 +2187,11 @@ c_parser_enum_specifier (c_parser *parser)
     {
       /* Parse an enum definition.  */
       struct c_enum_contents the_enum;
-      tree type;
+      tree type = start_enum (enum_loc, &the_enum, ident);
       tree postfix_attrs;
       /* We chain the enumerators in reverse order, then put them in
 	 forward order at the end.  */
-      tree values;
-      timevar_push (TV_PARSE_ENUM);
-      type = start_enum (enum_loc, &the_enum, ident);
-      values = NULL_TREE;
+      tree values = NULL_TREE;
       c_parser_consume_token (parser);
       while (true)
 	{
@@ -2285,7 +2255,6 @@ c_parser_enum_specifier (c_parser *parser)
       ret.kind = ctsk_tagdef;
       ret.expr = NULL_TREE;
       ret.expr_const_operands = true;
-      timevar_pop (TV_PARSE_ENUM);
       return ret;
     }
   else if (!ident)
@@ -2399,9 +2368,7 @@ c_parser_struct_or_union_specifier (c_parser *parser)
 	 semicolon separated fields than comma separated fields, and
 	 so we'll be minimizing the number of node traversals required
 	 by chainon.  */
-      tree contents;
-      timevar_push (TV_PARSE_STRUCT);
-      contents = NULL_TREE;
+      tree contents = NULL_TREE;
       c_parser_consume_token (parser);
       /* Handle the Objective-C @defs construct,
 	 e.g. foo(sizeof(struct{ @defs(ClassName) }));.  */
@@ -2488,7 +2455,6 @@ c_parser_struct_or_union_specifier (c_parser *parser)
       ret.kind = ctsk_tagdef;
       ret.expr = NULL_TREE;
       ret.expr_const_operands = true;
-      timevar_pop (TV_PARSE_STRUCT);
       return ret;
     }
   else if (!ident)
@@ -3401,6 +3367,7 @@ c_parser_attributes (c_parser *parser)
 	     || c_parser_next_token_is (parser, CPP_KEYWORD))
 	{
 	  tree attr, attr_name, attr_args;
+	  VEC(tree,gc) *expr_list;
 	  if (c_parser_next_token_is (parser, CPP_COMMA))
 	    {
 	      c_parser_consume_token (parser);
@@ -3464,17 +3431,44 @@ c_parser_attributes (c_parser *parser)
 	      continue;
 	    }
 	  c_parser_consume_token (parser);
-          /* If this is a lock annotation attribute that takes arguments,
-             set a flag so that we can make the parser tolerant of lock names
-             not in scope or unsupported.  */
-          if (is_lock_attribute_with_args (attr_name))
-            parsing_lock_attribute = true;
-	  /* Parse the attribute contents. */
-          if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
-            attr_args = NULL_TREE;
-          else
-            attr_args = c_parser_attr_arg_list (parser);
-          parsing_lock_attribute = false;
+	  /* Parse the attribute contents.  If they start with an
+	     identifier which is followed by a comma or close
+	     parenthesis, then the arguments start with that
+	     identifier; otherwise they are an expression list.  
+	     In objective-c the identifier may be a classname.  */
+	  if (c_parser_next_token_is (parser, CPP_NAME)
+	      && (c_parser_peek_token (parser)->id_kind == C_ID_ID
+		  || (c_dialect_objc () 
+		      && c_parser_peek_token (parser)->id_kind == C_ID_CLASSNAME))
+	      && ((c_parser_peek_2nd_token (parser)->type == CPP_COMMA)
+		  || (c_parser_peek_2nd_token (parser)->type
+		      == CPP_CLOSE_PAREN)))
+	    {
+	      tree arg1 = c_parser_peek_token (parser)->value;
+	      c_parser_consume_token (parser);
+	      if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
+		attr_args = build_tree_list (NULL_TREE, arg1);
+	      else
+		{
+		  tree tree_list;
+		  c_parser_consume_token (parser);
+		  expr_list = c_parser_expr_list (parser, false, true, NULL);
+		  tree_list = build_tree_list_vec (expr_list);
+		  attr_args = tree_cons (NULL_TREE, arg1, tree_list);
+		  release_tree_vector (expr_list);
+		}
+	    }
+	  else
+	    {
+	      if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
+		attr_args = NULL_TREE;
+	      else
+		{
+		  expr_list = c_parser_expr_list (parser, false, true, NULL);
+		  attr_args = build_tree_list_vec (expr_list);
+		  release_tree_vector (expr_list);
+		}
+	    }
 	  attr = build_tree_list (attr_name, attr_args);
 	  if (c_parser_next_token_is (parser, CPP_CLOSE_PAREN))
 	    c_parser_consume_token (parser);
@@ -5263,13 +5257,7 @@ c_parser_expr_no_commas (c_parser *parser, struct c_expr *after)
 				 code, exp_location, rhs.value,
 				 rhs.original_type);
   if (code == NOP_EXPR)
-    {
-      ret.original_code = MODIFY_EXPR;
-      /* Check for and warn about self-assignment if -Wself-assign is
-         enabled.  */
-      if (warn_self_assign)
-        check_for_self_assign (op_location, lhs.value, rhs.value);
-    }
+    ret.original_code = MODIFY_EXPR;
   else
     {
       TREE_NO_WARNING (ret.value) = 1;
@@ -8168,69 +8156,6 @@ c_parser_objc_at_dynamic_declaration (c_parser *parser)
   objc_add_dynamic_declaration (loc, list);
 }
 
-/* Parse the attribute contents (argument list). This routine is similar
-   to c_parser_expr_list except that when an argument is an identifier,
-   instead of calling c_parser_expr_no_commas to get its corresponding
-   DECL tree, we leave the identifier node as-is in the argument list.
-   This allows an attribute to take as an argument an identifier not
-   currently in scope when the attribute is being parsed. If the DECL tree
-   of an identifier argument is needed later in the compilation, it is the
-   attribute handlers' responsibility (see c-common.c) to replace the
-   IDENTIFIER node with the DECL node. See also cp/parser.c
-   (cp_parser_parenthesized_expression_list) for an example.  */
-
-static tree
-c_parser_attr_arg_list (c_parser *parser)
-{
-  struct c_expr expr;
-  tree ret, cur, identifier;
-
-  /* Process the first argument and initialize ret and cur.  */
-  if (c_parser_next_token_is (parser, CPP_NAME)
-      && (c_parser_peek_token (parser)->id_kind == C_ID_ID
-          || (c_dialect_objc () 
-              && c_parser_peek_token (parser)->id_kind == C_ID_CLASSNAME))
-      && ((c_parser_peek_2nd_token (parser)->type == CPP_COMMA)
-          || (c_parser_peek_2nd_token (parser)->type == CPP_CLOSE_PAREN)))
-    {
-      /* If the token is an identifier which is followed by a comma or close
-         parenthesis, then the argument is an identifier.  */
-      identifier = c_parser_peek_token (parser)->value;
-      c_parser_consume_token (parser);
-      ret = cur = build_tree_list (NULL_TREE, identifier);
-    }
-  else
-    {
-      expr = c_parser_expr_no_commas (parser, NULL);
-      expr.value = c_fully_fold (expr.value, false, NULL);
-      ret = cur = build_tree_list (NULL_TREE, expr.value);
-    }
-
-  /* Process the remaining arguments of the list if there is any.  */
-  while (c_parser_next_token_is (parser, CPP_COMMA))
-    {
-      c_parser_consume_token (parser);
-      if (c_parser_next_token_is (parser, CPP_NAME)
-          && (c_parser_peek_token (parser)->id_kind == C_ID_ID
-              || (c_dialect_objc () 
-                  && c_parser_peek_token (parser)->id_kind == C_ID_CLASSNAME))
-          && ((c_parser_peek_2nd_token (parser)->type == CPP_COMMA)
-              || (c_parser_peek_2nd_token (parser)->type == CPP_CLOSE_PAREN)))
-        {
-          identifier = c_parser_peek_token (parser)->value;
-          c_parser_consume_token (parser);
-          cur = TREE_CHAIN (cur) = build_tree_list (NULL_TREE, identifier);
-        }
-      else
-        {
-          expr = c_parser_expr_no_commas (parser, NULL);
-          expr.value = c_fully_fold (expr.value, false, NULL);
-          cur = TREE_CHAIN (cur) = build_tree_list (NULL_TREE, expr.value);
-        }
-    }
-  return ret;
-}
-
 
 /* Handle pragmas.  Some OpenMP pragmas are associated with, and therefore
    should be considered, statements.  ALLOW_STMT is true if we're within
@@ -8704,6 +8629,7 @@ c_parser_omp_clause_num_threads (c_parser *parser, tree list)
     {
       location_t expr_loc = c_parser_peek_token (parser)->location;
       tree c, t = c_parser_expression (parser).value;
+      mark_exp_read (t);
       t = c_fully_fold (t, false, NULL);
 
       c_parser_skip_until_found (parser, CPP_CLOSE_PAREN, "expected %<)%>");
@@ -8890,6 +8816,7 @@ c_parser_omp_clause_schedule (c_parser *parser, tree list)
 
       here = c_parser_peek_token (parser)->location;
       t = c_parser_expr_no_commas (parser, NULL).value;
+      mark_exp_read (t);
       t = c_fully_fold (t, false, NULL);
 
       if (OMP_CLAUSE_SCHEDULE_KIND (c) == OMP_CLAUSE_SCHEDULE_RUNTIME)

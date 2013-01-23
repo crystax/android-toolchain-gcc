@@ -101,6 +101,15 @@ hook_bool_mode_const_rtx_true (enum machine_mode mode ATTRIBUTE_UNUSED,
   return true;
 }
 
+/* Generic hook that takes (enum machine_mode, unsigned HOST_WIDE_INT)
+   and returns false.  */
+bool
+hook_bool_mode_uhwi_false (enum machine_mode mode ATTRIBUTE_UNUSED,
+			   unsigned HOST_WIDE_INT value ATTRIBUTE_UNUSED)
+{
+  return false;
+}
+
 /* Generic hook that takes (FILE *, const char *) and does nothing.  */
 void
 hook_void_FILEptr_constcharptr (FILE *a ATTRIBUTE_UNUSED, const char *b ATTRIBUTE_UNUSED)
@@ -276,13 +285,6 @@ hook_rtx_rtx_null (rtx x ATTRIBUTE_UNUSED)
 /* Generic hook that takes a tree and an int and returns NULL_RTX.  */
 rtx
 hook_rtx_tree_int_null (tree a ATTRIBUTE_UNUSED, int b ATTRIBUTE_UNUSED)
-{
-  return NULL;
-}
-
-/* Generic hook that returns NULL_RTX. */
-rtx
-hook_rtx_void_null (void)
 {
   return NULL;
 }

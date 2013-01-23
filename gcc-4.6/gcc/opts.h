@@ -280,15 +280,6 @@ extern const char **in_fnames;
 
 extern unsigned num_in_fnames;
 
-/* GCC command-line arguments used during profile-gen, that are saved to the
-   profile data file. During profile-use, these can be compared to make sure
-   only those auxiliary modules are actually imported that use a compatible
-   set of GCC flags as the primary module.  */
-extern const char **lipo_cl_args;
-
-/* The size of the above mentioned mentioned array.  */
-extern unsigned num_lipo_cl_args;
-
 size_t find_opt (const char *input, int lang_mask);
 extern int integral_argument (const char *arg);
 extern bool enum_value_to_arg (const struct cl_enum_arg *enum_args,
@@ -347,11 +338,6 @@ extern void control_warning_option (unsigned int opt_index, int kind,
 				    struct gcc_options *opts_set,
 				    diagnostic_context *dc);
 extern void print_ignored_options (void);
-extern void add_input_filename (const char *filename);
-extern void add_module_info (unsigned mod_id, bool is_primary, int index);
-extern void set_lipo_c_parsing_context (struct cpp_reader *parse_in, int i, bool verbose);
-extern void coverage_note_define (const char *cpp_def, bool is_def);
-extern void coverage_note_include (const char *filename);
 extern void handle_common_deferred_options (void);
 extern bool common_handle_option (struct gcc_options *opts,
 				  struct gcc_options *opts_set,
@@ -381,5 +367,4 @@ extern void default_options_optimization (struct gcc_options *opts,
 extern void set_struct_debug_option (struct gcc_options *opts,
 				     location_t loc,
 				     const char *value);
-extern void write_opts_to_asm (void);
 #endif

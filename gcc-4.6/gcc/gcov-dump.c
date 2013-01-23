@@ -28,7 +28,6 @@ along with Gcov; see the file COPYING3.  If not see
 #include "gcov-io.c"
 
 static void dump_file (const char *);
-static int dump_aux_modules (const char *);
 static void print_prefix (const char *, unsigned, gcov_position_t);
 static void print_usage (void);
 static void print_version (void);
@@ -38,11 +37,6 @@ static void tag_arcs (const char *, unsigned, unsigned);
 static void tag_lines (const char *, unsigned, unsigned);
 static void tag_counters (const char *, unsigned, unsigned);
 static void tag_summary (const char *, unsigned, unsigned);
-static void tag_module_info (const char *, unsigned, unsigned);
-static void tag_pmu_load_latency_info (const char *, unsigned, unsigned);
-static void tag_pmu_branch_mispredict_info (const char *, unsigned, unsigned);
-static void tag_pmu_tool_header (const char *, unsigned, unsigned);
-
 extern int main (int, char **);
 
 typedef struct tag_format
@@ -54,7 +48,6 @@ typedef struct tag_format
 
 static int flag_dump_contents = 0;
 static int flag_dump_positions = 0;
-static int flag_dump_aux_modules_only = 0;
 
 static const struct option options[] =
 {
@@ -76,12 +69,6 @@ static const tag_format_t tag_table[] =
   {GCOV_TAG_LINES, "LINES", tag_lines},
   {GCOV_TAG_OBJECT_SUMMARY, "OBJECT_SUMMARY", tag_summary},
   {GCOV_TAG_PROGRAM_SUMMARY, "PROGRAM_SUMMARY", tag_summary},
-  {GCOV_TAG_MODULE_INFO, "MODULE INFO", tag_module_info},
-  {GCOV_TAG_PMU_LOAD_LATENCY_INFO, "PMU_LOAD_LATENCY_INFO",
-   tag_pmu_load_latency_info},
-  {GCOV_TAG_PMU_BRANCH_MISPREDICT_INFO, "PMU_BRANCH_MISPREDICT_INFO",
-   tag_pmu_branch_mispredict_info},
-  {GCOV_TAG_PMU_TOOL_HEADER, "PMU_TOOL_HEADER", tag_pmu_tool_header},
   {0, NULL, NULL}
 };
 
@@ -93,7 +80,7 @@ main (int argc ATTRIBUTE_UNUSED, char **argv)
   /* Unlock the stdio streams.  */
   unlock_std_streams ();
 
-  while ((opt = getopt_long (argc, argv, "hlpvx", options, NULL)) != -1)
+  while ((opt = getopt_long (argc, argv, "hlpv", options, NULL)) != -1)
     {
       switch (opt)
 	{
@@ -109,23 +96,13 @@ main (int argc ATTRIBUTE_UNUSED, char **argv)
 	case 'p':
 	  flag_dump_positions = 1;
 	  break;
-	case 'x':
-	  flag_dump_aux_modules_only = 1;
-	  break;
 	default:
 	  fprintf (stderr, "unknown flag `%c'\n", opt);
 	}
     }
 
-  if (flag_dump_aux_modules_only)
-    {
-      while (argv[optind])
-	if (dump_aux_modules (argv[optind++]))
-	  return 1;
-    }
-  else
-    while (argv[optind])
-      dump_file (argv[optind++]);
+  while (argv[optind])
+    dump_file (argv[optind++]);
   return 0;
 }
 
@@ -138,7 +115,6 @@ print_usage (void)
   printf ("  -v, --version        Print version number\n");
   printf ("  -l, --long           Dump record contents too\n");
   printf ("  -p, --positions      Dump record positions\n");
-  printf ("  -x                   Dump names of auxiliary modules only\n");
 }
 
 static void
@@ -160,52 +136,6 @@ print_prefix (const char *filename, unsigned depth, gcov_position_t position)
   if (flag_dump_positions)
     printf ("%lu:", (unsigned long) position);
   printf ("%.*s", (int) depth, prefix);
-}
-
-/* Dump auxiliary module information for gcda file with
-   name FILENAME.  */
-
-static int
-dump_aux_modules (const char *filename)
-{
-  if (!gcov_open (filename, 1))
-    {
-      fprintf (stderr, "%s:cannot open\n", filename);
-      return 1;
-    }
-
-  /* magic */
-  gcov_read_unsigned ();
-  /* version */
-  gcov_read_unsigned ();
-  /* stamp */
-  gcov_read_unsigned ();
-
-  while (1)
-    {
-      gcov_position_t base;
-      unsigned tag, length;
-      int error;
-
-      tag = gcov_read_unsigned ();
-      if (!tag)
-	break;
-      length = gcov_read_unsigned ();
-      base = gcov_position ();
-      if (tag == GCOV_TAG_MODULE_INFO)
-	tag_module_info (filename, tag, length);
-      gcov_sync (base, length);
-      if ((error = gcov_is_error ()))
-	{
-	  printf (error < 0 ? "%s:counter overflow at %lu\n" :
-		  "%s:read error at %lu\n", filename,
-		  (long unsigned) gcov_position ());
-	  return 1;
-	}
-    }
-
-  gcov_close ();
-  return 0;
 }
 
 static void
@@ -332,13 +262,13 @@ dump_file (const char *filename)
 
 static void
 tag_function (const char *filename ATTRIBUTE_UNUSED,
-	      unsigned tag ATTRIBUTE_UNUSED, unsigned length)
+	      unsigned tag ATTRIBUTE_UNUSED, unsigned length ATTRIBUTE_UNUSED)
 {
   unsigned long pos = gcov_position ();
 
   printf (" ident=%u", gcov_read_unsigned ());
-  printf (", lineno_checksum=0x%08x", gcov_read_unsigned ());
-  printf (", cfg_checksum_checksum=0x%08x", gcov_read_unsigned ());
+  printf (", checksum=0x%08x", gcov_read_unsigned ());
+
   if (gcov_position () - pos < length)
     {
       const char *name;
@@ -504,67 +434,4 @@ tag_summary (const char *filename ATTRIBUTE_UNUSED,
       printf (", sum_max=" HOST_WIDEST_INT_PRINT_DEC,
 	      (HOST_WIDEST_INT)summary.ctrs[ix].sum_max);
     }
-}
-
-static void
-tag_module_info (const char *filename ATTRIBUTE_UNUSED,
-		 unsigned tag ATTRIBUTE_UNUSED, unsigned length)
-{
-  struct gcov_module_info* mod_info;
-
-  mod_info = (struct gcov_module_info *) 
-      alloca ((length + 2) * sizeof (gcov_unsigned_t));
-  gcov_read_module_info (mod_info, length);
-  if (flag_dump_aux_modules_only)
-    {
-      if (!mod_info->is_primary)
-	printf ("%s\n", mod_info->source_filename);
-    }
-  else
-    {
-      const char *suffix = mod_info->is_primary
-	? (mod_info->is_exported ? "primary, exported" : "primary")
-	: "auxiliary";
-      printf (": %s [%s]", mod_info->source_filename, suffix);
-    }
-}
-
-/* Read gcov tag GCOV_TAG_PMU_LOAD_LATENCY_INFO from the gcda file and
-  print the contents in a human readable form.  */
-
-static void
-tag_pmu_load_latency_info (const char *filename ATTRIBUTE_UNUSED,
-                           unsigned tag ATTRIBUTE_UNUSED, unsigned length)
-{
-  gcov_pmu_ll_info_t ll_info;
-  gcov_read_pmu_load_latency_info (&ll_info, length);
-  print_load_latency_line (stdout, &ll_info, no_newline);
-  free (ll_info.filename);
-}
-
-/* Read gcov tag GCOV_TAG_PMU_BRANCH_MISPREDICT_INFO from the gcda
-  file and print the contents in a human readable form.  */
-
-static void
-tag_pmu_branch_mispredict_info (const char *filename ATTRIBUTE_UNUSED,
-                                unsigned tag ATTRIBUTE_UNUSED, unsigned length)
-{
-  gcov_pmu_brm_info_t brm_info;
-  gcov_read_pmu_branch_mispredict_info (&brm_info, length);
-  print_branch_mispredict_line (stdout, &brm_info, no_newline);
-  free (brm_info.filename);
-}
-
-
-/* Read gcov tag GCOV_TAG_PMU_TOOL_HEADER from the gcda file and print
-   the contents in a human readable form.  */
-
-static void
-tag_pmu_tool_header (const char *filename ATTRIBUTE_UNUSED,
-                     unsigned tag ATTRIBUTE_UNUSED, unsigned length)
-{
-  gcov_pmu_tool_header_t tool_header;
-  gcov_read_pmu_tool_header (&tool_header, length);
-  print_pmu_tool_header (stdout, &tool_header, no_newline);
-  destroy_pmu_tool_header (&tool_header);
 }

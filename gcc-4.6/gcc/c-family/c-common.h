@@ -607,12 +607,11 @@ extern int flag_use_repository;
 /* The supported C++ dialects.  */
 
 enum cxx_dialect {
-  /* C++98 with TC1  */
+  /* C++98  */
   cxx98,
-  cxx03 = cxx98,
-  /* C++11  */
-  cxx0x,
-  cxx11 = cxx0x
+  /* Experimental features that are likely to become part of
+     C++0x.  */
+  cxx0x
 };
 
 /* The C++ dialect being used. C++98 is the default.  */
@@ -959,7 +958,6 @@ extern VEC(tree,gc) *make_tree_vector (void);
 extern void release_tree_vector (VEC(tree,gc) *);
 extern VEC(tree,gc) *make_tree_vector_single (tree);
 extern VEC(tree,gc) *make_tree_vector_copy (const VEC(tree,gc) *);
-extern void check_for_self_assign (location_t, tree, tree);
 
 /* In c-gimplify.c  */
 extern void c_genericize (tree);

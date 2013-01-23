@@ -194,7 +194,7 @@ compare_and_warn (gimple stmt, tree lhs, tree rhs)
 /* Check and warn if STMT is a self-assign statement.  */
 
 static void
-check_self_assign (gimple stmt)
+warn_self_assign (gimple stmt)
 {
   tree rhs, lhs;
 
@@ -247,7 +247,7 @@ execute_warn_self_assign (void)
   FOR_EACH_BB (bb)
     {
       for (gsi = gsi_start_bb (bb); !gsi_end_p (gsi); gsi_next (&gsi))
-        check_self_assign (gsi_stmt (gsi));
+        warn_self_assign (gsi_stmt (gsi));
     }
 
   return 0;

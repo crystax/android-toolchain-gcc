@@ -434,11 +434,12 @@ pop_binding (tree id, tree decl)
    was successful.  */
 
 static bool
-supplement_binding_1 (cxx_binding *binding, tree decl)
+supplement_binding (cxx_binding *binding, tree decl)
 {
   tree bval = binding->value;
   bool ok = true;
 
+  timevar_push (TV_NAME_LOOKUP);
   if (TREE_CODE (decl) == TYPE_DECL && DECL_ARTIFICIAL (decl))
     /* The new name is the type name.  */
     binding->type = decl;
@@ -525,19 +526,7 @@ supplement_binding_1 (cxx_binding *binding, tree decl)
       ok = false;
     }
 
-  return ok;
-}
-
-/* Wrapper for supplement_binding_1.  */
-
-static bool
-supplement_binding (cxx_binding *binding, tree decl)
-{
-  bool ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = supplement_binding_1 (binding, decl);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, ok);
 }
 
 /* Add DECL to the list of things declared in B.  */
@@ -574,10 +563,6 @@ add_decl_to_level (tree decl, cxx_scope *b)
 		&& (!TREE_PUBLIC (decl) || DECL_DECLARED_INLINE_P (decl))))
 	  VEC_safe_push (tree, gc, b->static_decls, decl);
     }
-
-  /* The following call is needed for LIPO mode. In this mode, global
-     scope declarations are tracked on a per-module basis.  */
-  add_decl_to_current_module_scope (decl, b);
 }
 
 /* Record a decl-node X as belonging to the current lexical scope.
@@ -589,15 +574,17 @@ add_decl_to_level (tree decl, cxx_scope *b)
    If an old decl is returned, it may have been smashed
    to agree with what X says.  */
 
-static tree
-pushdecl_maybe_friend_1 (tree x, bool is_friend)
+tree
+pushdecl_maybe_friend (tree x, bool is_friend)
 {
   tree t;
   tree name;
   int need_new_binding;
 
+  timevar_push (TV_NAME_LOOKUP);
+
   if (x == error_mark_node)
-    return error_mark_node;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 
   need_new_binding = 1;
 
@@ -733,7 +720,7 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 	      /* Check for duplicate params.  */
 	      tree d = duplicate_decls (x, t, is_friend);
 	      if (d)
-		return d;
+		POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, d);
 	    }
 	  else if ((DECL_EXTERN_C_FUNCTION_P (x)
 		    || DECL_FUNCTION_TEMPLATE_P (x))
@@ -746,7 +733,7 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 			 TREE_TYPE (x));
 	      
 	      /* Throw away the redeclaration.  */
-	      return t;
+	      POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 	    }
 	  else
 	    {
@@ -755,14 +742,14 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 	      /* If the redeclaration failed, we can stop at this
 		 point.  */
 	      if (olddecl == error_mark_node)
-		return error_mark_node;
+		POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 
 	      if (olddecl)
 		{
 		  if (TREE_CODE (t) == TYPE_DECL)
 		    SET_IDENTIFIER_TYPE_VALUE (name, TREE_TYPE (t));
 
-		  return t;
+		  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 		}
 	      else if (DECL_MAIN_P (x) && TREE_CODE (t) == FUNCTION_DECL)
 		{
@@ -776,7 +763,7 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 		  error ("as %qD", x);
 		  /* We don't try to push this declaration since that
 		     causes a crash.  */
-		  return x;
+		  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, x);
 		}
 	    }
 	}
@@ -819,15 +806,12 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 					  x_exception_spec,
 					  ce_normal))
 		    {
-		      pedwarn (input_location, 0,
-                               "declaration of %q#D with C language linkage",
+		      pedwarn (input_location, 0, "declaration of %q#D with C language linkage",
 			       x);
-		      pedwarn (input_location, 0,
-                               "conflicts with previous declaration %q+#D",
+		      pedwarn (input_location, 0, "conflicts with previous declaration %q+#D",
 			       previous);
-		      pedwarn (input_location, 0,
-                               "due to different exception specifications");
-		      return error_mark_node;
+		      pedwarn (input_location, 0, "due to different exception specifications");
+		      POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 		    }
 		}
 	      else
@@ -872,7 +856,7 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 	check_default_args (t);
 
       if (t != x || DECL_FUNCTION_TEMPLATE_P (t))
-	return t;
+	POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 
       /* If declaring a type as a typedef, copy the type (unless we're
 	 at line 0), and install this TYPE_DECL as the new type's typedef
@@ -1092,44 +1076,22 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 		   }
 		}
 
-	      if ((warn_shadow
-		   || warn_shadow_local
-		   || warn_shadow_compatible_local)
-		  && !nowarn)
+	      if (warn_shadow && !nowarn)
 		{
-                  enum opt_code warning_code;
-                  /* If '-Wshadow-compatible-local' is specified without other
-                     -Wshadow flags, we will warn only when the type of the
-                     shadowing variable (i.e. x) can be converted to that of
-                     the shadowed parameter (oldlocal). The reason why we only
-                     check if x's type can be converted to oldlocal's type
-                     (but not the other way around) is because when users
-                     accidentally shadow a parameter, more than often they
-                     would use the variable thinking (mistakenly) it's still
-                     the parameter. It would be rare that users would use the
-                     variable in the place that expects the parameter but
-                     thinking it's a new decl.  */
-                  if (can_convert (TREE_TYPE (oldlocal), TREE_TYPE (x)))
-                    warning_code = OPT_Wshadow_compatible_local;
-                  else
-                    warning_code = OPT_Wshadow_local;
 		  if (TREE_CODE (oldlocal) == PARM_DECL)
-		    warning_at (input_location, warning_code,
+		    warning_at (input_location, OPT_Wshadow,
 				"declaration of %q#D shadows a parameter", x);
 		  else
-		    warning_at (input_location, warning_code,
+		    warning_at (input_location, OPT_Wshadow,
 				"declaration of %qD shadows a previous local",
 				x);
-		   warning_at (DECL_SOURCE_LOCATION (oldlocal), warning_code,
+		   warning_at (DECL_SOURCE_LOCATION (oldlocal), OPT_Wshadow,
 			       "shadowed declaration is here");
 		}
 	    }
 
 	  /* Maybe warn if shadowing something else.  */
-	  else if ((warn_shadow
-		    || warn_shadow_local
-		    || warn_shadow_compatible_local)
-	           && !DECL_EXTERNAL (x)
+	  else if (warn_shadow && !DECL_EXTERNAL (x)
                    /* No shadow warnings for internally generated vars unless
                       it's an implicit typedef (see create_implicit_typedef
                       in decl.c).  */
@@ -1181,19 +1143,7 @@ pushdecl_maybe_friend_1 (tree x, bool is_friend)
 		       ? NAMESPACE_LEVEL (CP_DECL_CONTEXT (x))
 		       : current_binding_level);
 
-  return x;
-}
-
-/* Wrapper for pushdecl_maybe_friend_1.  */
-
-tree
-pushdecl_maybe_friend (tree x, bool is_friend)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = pushdecl_maybe_friend_1 (x, is_friend);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, x);
 }
 
 /* Record a decl-node X as belonging to the current lexical scope.  */
@@ -1804,37 +1754,25 @@ print_binding_stack (void)
   print_binding_level (NAMESPACE_LEVEL (global_namespace));
 }
 
-/* Return the type associated with ID.  */
-
-static tree
-identifier_type_value_1 (tree id)
-{
-  /* There is no type with that name, anywhere.  */
-  if (REAL_IDENTIFIER_TYPE_VALUE (id) == NULL_TREE)
-    return NULL_TREE;
-  /* This is not the type marker, but the real thing.  */
-  if (REAL_IDENTIFIER_TYPE_VALUE (id) != global_type_node)
-    return REAL_IDENTIFIER_TYPE_VALUE (id);
-  /* Have to search for it. It must be on the global level, now.
-     Ask lookup_name not to return non-types.  */
-  id = lookup_name_real (id, 2, 1, /*block_p=*/true, 0, LOOKUP_COMPLAIN);
-  if (id)
-    return TREE_TYPE (id);
-  return NULL_TREE;
-}
-
-/* Wrapper for identifier_type_value_1.  */
+/* Return the type associated with id.  */
 
 tree
 identifier_type_value (tree id)
 {
-  tree ret;
-  timevar_start (TV_NAME_LOOKUP);
-  ret = identifier_type_value_1 (id);
-  timevar_stop (TV_NAME_LOOKUP);
-  return ret;
+  timevar_push (TV_NAME_LOOKUP);
+  /* There is no type with that name, anywhere.  */
+  if (REAL_IDENTIFIER_TYPE_VALUE (id) == NULL_TREE)
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, NULL_TREE);
+  /* This is not the type marker, but the real thing.  */
+  if (REAL_IDENTIFIER_TYPE_VALUE (id) != global_type_node)
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, REAL_IDENTIFIER_TYPE_VALUE (id));
+  /* Have to search for it. It must be on the global level, now.
+     Ask lookup_name not to return non-types.  */
+  id = lookup_name_real (id, 2, 1, /*block_p=*/true, 0, LOOKUP_COMPLAIN);
+  if (id)
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, TREE_TYPE (id));
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, NULL_TREE);
 }
-
 
 /* Return the IDENTIFIER_GLOBAL_VALUE of T, for use in common code, since
    the definition of IDENTIFIER_GLOBAL_VALUE is different for C and C++.  */
@@ -1976,11 +1914,13 @@ make_lambda_name (void)
 static inline cxx_binding *
 find_binding (cxx_scope *scope, cxx_binding *binding)
 {
+  timevar_push (TV_NAME_LOOKUP);
+
   for (; binding != NULL; binding = binding->previous)
     if (binding->scope == scope)
-      return binding;
+      POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, binding);
 
-  return (cxx_binding *)0;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, (cxx_binding *)0);
 }
 
 /* Return the binding for NAME in SCOPE, if any.  Otherwise, return NULL.  */
@@ -2059,45 +1999,36 @@ lookup_extern_c_fun_binding_in_all_ns (tree function)
    scope, a using decl might extend any previous bindings).  */
 
 static tree
-push_using_decl_1 (tree scope, tree name)
+push_using_decl (tree scope, tree name)
 {
   tree decl;
 
+  timevar_push (TV_NAME_LOOKUP);
   gcc_assert (TREE_CODE (scope) == NAMESPACE_DECL);
   gcc_assert (TREE_CODE (name) == IDENTIFIER_NODE);
   for (decl = current_binding_level->usings; decl; decl = DECL_CHAIN (decl))
     if (USING_DECL_SCOPE (decl) == scope && DECL_NAME (decl) == name)
       break;
   if (decl)
-    return namespace_bindings_p () ? decl : NULL_TREE;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP,
+			    namespace_bindings_p () ? decl : NULL_TREE);
   decl = build_lang_decl (USING_DECL, name, NULL_TREE);
   USING_DECL_SCOPE (decl) = scope;
   DECL_CHAIN (decl) = current_binding_level->usings;
   current_binding_level->usings = decl;
-  return decl;
-}
-
-/* Wrapper for push_using_decl_1.  */
-
-static tree
-push_using_decl (tree scope, tree name)
-{
-  tree ret;
-  timevar_start (TV_NAME_LOOKUP);
-  ret = push_using_decl_1 (scope, name);
-  timevar_stop (TV_NAME_LOOKUP);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 }
 
 /* Same as pushdecl, but define X in binding-level LEVEL.  We rely on the
    caller to set DECL_CONTEXT properly.  */
 
-static tree
-pushdecl_with_scope_1 (tree x, cxx_scope *level, bool is_friend)
+tree
+pushdecl_with_scope (tree x, cxx_scope *level, bool is_friend)
 {
   struct cp_binding_level *b;
   tree function_decl = current_function_decl;
 
+  timevar_push (TV_NAME_LOOKUP);
   current_function_decl = NULL_TREE;
   if (level->kind == sk_class)
     {
@@ -2114,21 +2045,8 @@ pushdecl_with_scope_1 (tree x, cxx_scope *level, bool is_friend)
       current_binding_level = b;
     }
   current_function_decl = function_decl;
-  return x;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, x);
 }
- 
-/* Wrapper for pushdecl_with_scope_1.  */
-
-tree
-pushdecl_with_scope (tree x, cxx_scope *level, bool is_friend)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = pushdecl_with_scope_1 (x, level, is_friend);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
-}
-
 
 /* DECL is a FUNCTION_DECL for a non-member function, which may have
    other definitions already in place.  We get around this by making
@@ -2152,13 +2070,14 @@ pushdecl_with_scope (tree x, cxx_scope *level, bool is_friend)
    it's always DECL (and never something that's not a _DECL).  */
 
 static tree
-push_overloaded_decl_1 (tree decl, int flags, bool is_friend)
+push_overloaded_decl (tree decl, int flags, bool is_friend)
 {
   tree name = DECL_NAME (decl);
   tree old;
   tree new_binding;
   int doing_global = (namespace_bindings_p () || !(flags & PUSH_LOCAL));
 
+  timevar_push (TV_NAME_LOOKUP);
   if (doing_global)
     old = namespace_binding (name, DECL_CONTEXT (decl));
   else
@@ -2196,7 +2115,7 @@ push_overloaded_decl_1 (tree decl, int flags, bool is_friend)
 	      /* If DECL was a redeclaration of FN -- even an invalid
 		 one -- pass that information along to our caller.  */
 	      if (dup == fn || dup == error_mark_node)
-		return dup;
+		POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, dup);
 	    }
 
 	  /* We don't overload implicit built-ins.  duplicate_decls()
@@ -2214,7 +2133,7 @@ push_overloaded_decl_1 (tree decl, int flags, bool is_friend)
 	{
 	  error ("previous non-function declaration %q+#D", old);
 	  error ("conflicts with function declaration %q#D", decl);
-	  return decl;
+	  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 	}
     }
 
@@ -2266,7 +2185,7 @@ push_overloaded_decl_1 (tree decl, int flags, bool is_friend)
 
 		/* And update the cxx_binding node.  */
 		IDENTIFIER_BINDING (name)->value = new_binding;
-		return decl;
+		POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 	      }
 
 	  /* We should always find a previous binding in this case.  */
@@ -2277,19 +2196,7 @@ push_overloaded_decl_1 (tree decl, int flags, bool is_friend)
       push_local_binding (name, new_binding, flags);
     }
 
-  return decl;
-}
-
-/* Wrapper for push_overloaded_decl_1.  */
-
-static tree
-push_overloaded_decl (tree decl, int flags, bool is_friend)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = push_overloaded_decl_1 (decl, flags, is_friend);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 }
 
 /* Check a non-member using-declaration. Return the name and scope
@@ -2736,7 +2643,7 @@ poplevel_class (void)
   size_t i;
   tree shadowed;
 
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   gcc_assert (level != 0);
 
   /* If we're leaving a toplevel class, cache its binding level.  */
@@ -2760,7 +2667,7 @@ poplevel_class (void)
      `pushlevel_class' routine.  */
   gcc_assert (current_binding_level == level);
   leave_scope ();
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Set INHERITED_VALUE_BINDING_P on BINDING to true or false, as
@@ -2804,14 +2711,13 @@ pushdecl_class_level (tree x)
 {
   tree name;
   bool is_valid = true;
-  bool subtime;
 
   /* Do nothing if we're adding to an outer lambda closure type,
      outer_binding will add it later if it's needed.  */
   if (current_class_type != class_binding_level->this_entity)
     return true;
 
-  subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   /* Get the name of X.  */
   if (TREE_CODE (x) == OVERLOAD)
     name = DECL_NAME (get_first_fn (x));
@@ -2840,8 +2746,7 @@ pushdecl_class_level (tree x)
 	  input_location = save_location;
 	}
     }
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return is_valid;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, is_valid);
 }
 
 /* Return the BINDING (if any) for NAME in SCOPE, which is a class
@@ -2908,20 +2813,21 @@ get_class_binding (tree name, cxx_scope *scope)
 /* Make the declaration(s) of X appear in CLASS scope under the name
    NAME.  Returns true if the binding is valid.  */
 
-static bool
-push_class_level_binding_1 (tree name, tree x)
+bool
+push_class_level_binding (tree name, tree x)
 {
   cxx_binding *binding;
   tree decl = x;
   bool ok;
 
+  timevar_push (TV_NAME_LOOKUP);
   /* The class_binding_level will be NULL if x is a template
      parameter name in a member template.  */
   if (!class_binding_level)
-    return true;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, true);
 
   if (name == error_mark_node)
-    return false;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, false);
 
   /* Check for invalid member names.  */
   gcc_assert (TYPE_BEING_DEFINED (current_class_type));
@@ -2936,7 +2842,7 @@ push_class_level_binding_1 (tree name, tree x)
     decl = TREE_VALUE (decl);
 
   if (!check_template_shadow (decl))
-    return false;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, false);
 
   /* [class.mem]
 
@@ -2970,7 +2876,7 @@ push_class_level_binding_1 (tree name, tree x)
 	  error ("%qD has the same name as the class in which it is "
 		 "declared",
 		 x);
-	  return false;
+	  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, false);
 	}
     }
 
@@ -3021,11 +2927,11 @@ push_class_level_binding_1 (tree name, tree x)
       else if (TREE_CODE (x) == OVERLOAD && is_overloaded_fn (bval))
 	old_decl = bval;
       else if (TREE_CODE (x) == USING_DECL && TREE_CODE (bval) == USING_DECL)
-	return true;
+	POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, true);
       else if (TREE_CODE (x) == USING_DECL && is_overloaded_fn (bval))
 	old_decl = bval;
       else if (TREE_CODE (bval) == USING_DECL && is_overloaded_fn (x))
-	return true;
+	POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, true);
 
       if (old_decl && binding->scope == class_binding_level)
 	{
@@ -3034,7 +2940,7 @@ push_class_level_binding_1 (tree name, tree x)
 	     here.  This function is only used to register bindings
 	     from with the class definition itself.  */
 	  INHERITED_VALUE_BINDING_P (binding) = 0;
-	  return true;
+	  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, true);
 	}
     }
 
@@ -3056,19 +2962,7 @@ push_class_level_binding_1 (tree name, tree x)
       ok = true;
     }
 
-  return ok;
-}
-
-/* Wrapper for push_class_level_binding_1.  */
-
-bool
-push_class_level_binding (tree name, tree x)
-{
-  bool ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = push_class_level_binding_1 (name, x);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, ok);
 }
 
 /* Process "using SCOPE::NAME" in a class scope.  Return the
@@ -3186,9 +3080,8 @@ do_class_using_decl (tree scope, tree name)
 
 /* Return the binding value for name in scope.  */
 
-
-static tree
-namespace_binding_1 (tree name, tree scope)
+tree
+namespace_binding (tree name, tree scope)
 {
   cxx_binding *binding;
 
@@ -3203,23 +3096,14 @@ namespace_binding_1 (tree name, tree scope)
   return binding ? binding->value : NULL_TREE;
 }
 
-tree
-namespace_binding (tree name, tree scope)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = namespace_binding_1 (name, scope);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
-}
-
 /* Set the binding value for name in scope.  */
 
-static void
-set_namespace_binding_1 (tree name, tree scope, tree val)
+void
+set_namespace_binding (tree name, tree scope, tree val)
 {
   cxx_binding *b;
 
+  timevar_push (TV_NAME_LOOKUP);
   if (scope == NULL_TREE)
     scope = global_namespace;
   b = binding_for_name (NAMESPACE_LEVEL (scope), name);
@@ -3227,16 +3111,7 @@ set_namespace_binding_1 (tree name, tree scope, tree val)
     b->value = val;
   else
     supplement_binding (b, val);
-}
-
-/* Wrapper for set_namespace_binding_1.  */
-
-void
-set_namespace_binding (tree name, tree scope, tree val)
-{
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  set_namespace_binding_1 (name, scope, val);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Set the context of a declaration to scope. Complain if we are not
@@ -3422,7 +3297,7 @@ push_namespace (tree name)
   int implicit_use = 0;
   bool anon = !name;
 
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
 
   /* We should not get here if the global_namespace is not yet constructed
      nor if NAME designates the global namespace:  The global scope is
@@ -3482,7 +3357,7 @@ push_namespace (tree name)
   /* Enter the name space.  */
   current_namespace = d;
 
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Pop from the scope of the current namespace.  */
@@ -3517,7 +3392,7 @@ push_nested_namespace (tree ns)
 void
 pop_nested_namespace (tree ns)
 {
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   gcc_assert (current_namespace == ns);
   while (ns != global_namespace)
     {
@@ -3526,7 +3401,7 @@ pop_nested_namespace (tree ns)
     }
 
   pop_from_top_level ();
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Temporarily set the namespace for the current declaration.  */
@@ -3551,26 +3426,13 @@ pop_decl_namespace (void)
    of two given namespaces.  */
 
 static tree
-namespace_ancestor_1 (tree ns1, tree ns2)
-{
-  tree nsr;
-  if (is_ancestor (ns1, ns2))
-    nsr = ns1;
-  else
-    nsr = namespace_ancestor_1 (CP_DECL_CONTEXT (ns1), ns2);
-  return nsr;
-}
-
-/* Wrapper for namespace_ancestor_1.  */
-
-static tree
 namespace_ancestor (tree ns1, tree ns2)
 {
-  tree nsr;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  nsr = namespace_ancestor_1 (ns1, ns2);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return nsr;
+  timevar_push (TV_NAME_LOOKUP);
+  if (is_ancestor (ns1, ns2))
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, ns1);
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP,
+			  namespace_ancestor (CP_DECL_CONTEXT (ns1), ns2));
 }
 
 /* Process a namespace-alias declaration.  */
@@ -3606,7 +3468,7 @@ pushdecl_namespace_level (tree x, bool is_friend)
   struct cp_binding_level *b = current_binding_level;
   tree t;
 
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   t = pushdecl_with_scope (x, NAMESPACE_LEVEL (current_namespace), is_friend);
 
   /* Now, the type_shadowed stack may screw us.  Munge it so it does
@@ -3640,21 +3502,23 @@ pushdecl_namespace_level (tree x, bool is_friend)
 	  *ptr = newval;
 	}
     }
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return t;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 }
 
 /* Insert USED into the using list of USER. Set INDIRECT_flag if this
    directive is not directly from the source. Also find the common
    ancestor and let our users know about the new namespace */
-
 static void
-add_using_namespace_1 (tree user, tree used, bool indirect)
+add_using_namespace (tree user, tree used, bool indirect)
 {
   tree t;
+  timevar_push (TV_NAME_LOOKUP);
   /* Using oneself is a no-op.  */
   if (user == used)
-    return;
+    {
+      timevar_pop (TV_NAME_LOOKUP);
+      return;
+    }
   gcc_assert (TREE_CODE (user) == NAMESPACE_DECL);
   gcc_assert (TREE_CODE (used) == NAMESPACE_DECL);
   /* Check if we already have this.  */
@@ -3664,6 +3528,7 @@ add_using_namespace_1 (tree user, tree used, bool indirect)
       if (!indirect)
 	/* Promote to direct usage.  */
 	TREE_INDIRECT_USING (t) = 0;
+      timevar_pop (TV_NAME_LOOKUP);
       return;
     }
 
@@ -3681,21 +3546,12 @@ add_using_namespace_1 (tree user, tree used, bool indirect)
   /* Recursively add all namespaces used.  */
   for (t = DECL_NAMESPACE_USING (used); t; t = TREE_CHAIN (t))
     /* indirect usage */
-    add_using_namespace_1 (user, TREE_PURPOSE (t), 1);
+    add_using_namespace (user, TREE_PURPOSE (t), 1);
 
   /* Tell everyone using us about the new used namespaces.  */
   for (t = DECL_NAMESPACE_USERS (user); t; t = TREE_CHAIN (t))
-    add_using_namespace_1 (TREE_PURPOSE (t), used, 1);
-}
-
-/* Wrapper for add_using_namespace_1.  */
-
-static void
-add_using_namespace (tree user, tree used, bool indirect)
-{
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  add_using_namespace_1 (user, used, indirect);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+    add_using_namespace (TREE_PURPOSE (t), used, 1);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Process a using-declaration not appearing in class or local scope.  */
@@ -3802,14 +3658,13 @@ parse_using_directive (tree name_space, tree attribs)
 static tree
 pushdecl_top_level_1 (tree x, tree *init, bool is_friend)
 {
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   push_to_top_level ();
   x = pushdecl_namespace_level (x, is_friend);
   if (init)
     cp_finish_decl (x, *init, false, NULL_TREE, 0);
   pop_from_top_level ();
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return x;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, x);
 }
 
 /* Like pushdecl, only it places X in the global scope if appropriate.  */
@@ -4145,13 +4000,15 @@ suggest_alternatives_for (location_t location, tree name)
    considering using-directives.  */
 
 static tree
-unqualified_namespace_lookup_1 (tree name, int flags)
+unqualified_namespace_lookup (tree name, int flags)
 {
   tree initial = current_decl_namespace ();
   tree scope = initial;
   tree siter;
   struct cp_binding_level *level;
   tree val = NULL_TREE;
+
+  timevar_push (TV_NAME_LOOKUP);
 
   for (; !val; scope = CP_DECL_CONTEXT (scope))
     {
@@ -4169,7 +4026,7 @@ unqualified_namespace_lookup_1 (tree name, int flags)
 	if (!lookup_using_namespace (name, &binding, level->using_directives,
 				     scope, flags))
 	  /* Give up because of error.  */
-	  return error_mark_node;
+	  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 
       /* Add all _DECLs seen through global using-directives.  */
       /* XXX local and global using lists should work equally.  */
@@ -4180,7 +4037,7 @@ unqualified_namespace_lookup_1 (tree name, int flags)
 				       DECL_NAMESPACE_USING (siter),
 				       scope, flags))
 	    /* Give up because of error.  */
-	    return error_mark_node;
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 	  if (siter == scope) break;
 	  siter = CP_DECL_CONTEXT (siter);
 	}
@@ -4189,19 +4046,7 @@ unqualified_namespace_lookup_1 (tree name, int flags)
       if (scope == global_namespace)
 	break;
     }
-  return val;
-}
-
-/* Wrapper for unqualified_namespace_lookup_1.  */
-
-static tree
-unqualified_namespace_lookup (tree name, int flags)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = unqualified_namespace_lookup_1 (name, flags);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, val);
 }
 
 /* Look up NAME (an IDENTIFIER_NODE) in SCOPE (either a NAMESPACE_DECL
@@ -4251,7 +4096,7 @@ lookup_using_namespace (tree name, struct scope_binding *val,
 			tree usings, tree scope, int flags)
 {
   tree iter;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   /* Iterate over all used namespaces in current, searching for using
      directives of scope.  */
   for (iter = usings; iter; iter = TREE_CHAIN (iter))
@@ -4264,8 +4109,7 @@ lookup_using_namespace (tree name, struct scope_binding *val,
 	if (val1)
 	  ambiguous_decl (val, val1, flags);
       }
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return val->value != error_mark_node;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, val->value != error_mark_node);
 }
 
 /* Returns true iff VEC contains TARGET.  */
@@ -4298,7 +4142,7 @@ qualified_lookup_using_namespace (tree name, tree scope,
   VEC(tree,gc) *todo_maybe = NULL;
   VEC(tree,gc) *todo_inline = NULL;
   tree usings;
-  timevar_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   /* Look through namespace aliases.  */
   scope = ORIGINAL_NAMESPACE (scope);
 
@@ -4357,8 +4201,7 @@ qualified_lookup_using_namespace (tree name, tree scope,
   VEC_free (tree,gc,todo_inline);
   VEC_free (tree,gc,seen);
   VEC_free (tree,gc,seen_inline);
-  timevar_stop (TV_NAME_LOOKUP);
-  return result->value != error_mark_node;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, result->value != error_mark_node);
 }
 
 /* Subroutine of outer_binding.
@@ -4485,13 +4328,14 @@ innermost_non_namespace_value (tree name)
    If NONCLASS is nonzero, bindings in class scopes are ignored.  If
    BLOCK_P is false, bindings in block scopes are ignored.  */
 
-static tree
-lookup_name_real_1 (tree name, int prefer_type, int nonclass, bool block_p,
-		    int namespaces_only, int flags)
+tree
+lookup_name_real (tree name, int prefer_type, int nonclass, bool block_p,
+		  int namespaces_only, int flags)
 {
   cxx_binding *iter;
   tree val = NULL_TREE;
 
+  timevar_push (TV_NAME_LOOKUP);
   /* Conversion operators are handled specially because ordinary
      unqualified name lookup will not find template conversion
      operators.  */
@@ -4515,10 +4359,10 @@ lookup_name_real_1 (tree name, int prefer_type, int nonclass, bool block_p,
 	  class_type = level->this_entity;
 	  operators = lookup_fnfields (class_type, name, /*protect=*/0);
 	  if (operators)
-	    return operators;
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, operators);
 	}
 
-      return NULL_TREE;
+      POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, NULL_TREE);
     }
 
   flags |= lookup_flags (prefer_type, namespaces_only);
@@ -4613,21 +4457,7 @@ lookup_name_real_1 (tree name, int prefer_type, int nonclass, bool block_p,
   if (val && TREE_CODE (val) == OVERLOAD && !really_overloaded_fn (val))
     val = OVL_FUNCTION (val);
 
-  return val;
-}
-
-/* Wrapper for lookup_name_real_1.  */
-
-tree
-lookup_name_real (tree name, int prefer_type, int nonclass, bool block_p,
-		  int namespaces_only, int flags)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_name_real_1 (name, prefer_type, nonclass, block_p,
-			    namespaces_only, flags);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, val);
 }
 
 tree
@@ -4674,11 +4504,13 @@ lookup_name_prefer_type (tree name, int prefer_type)
    A TYPE_DECL best matching the NAME is returned.  Catching error
    and issuing diagnostics are caller's responsibility.  */
 
-static tree
-lookup_type_scope_1 (tree name, tag_scope scope)
+tree
+lookup_type_scope (tree name, tag_scope scope)
 {
   cxx_binding *iter = NULL;
   tree val = NULL_TREE;
+
+  timevar_push (TV_NAME_LOOKUP);
 
   /* Look in non-namespace scope first.  */
   if (current_binding_level->kind != sk_namespace)
@@ -4734,7 +4566,7 @@ lookup_type_scope_1 (tree name, tag_scope scope)
       while (b)
 	{
 	  if (iter->scope == b)
-	    return val;
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, val);
 
 	  if (b->kind == sk_cleanup || b->kind == sk_template_parms
 	      || b->kind == sk_function_parms)
@@ -4747,31 +4579,19 @@ lookup_type_scope_1 (tree name, tag_scope scope)
 	}
     }
 
-  return NULL_TREE;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, NULL_TREE);
 }
- 
-/* Wrapper for lookup_type_scope_1.  */
-
-tree
-lookup_type_scope (tree name, tag_scope scope)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_type_scope_1 (name, scope);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
-}
-
 
 /* Similar to `lookup_name' but look only in the innermost non-class
    binding level.  */
 
-static tree
-lookup_name_innermost_nonclass_level_1 (tree name)
+tree
+lookup_name_innermost_nonclass_level (tree name)
 {
   struct cp_binding_level *b;
   tree t = NULL_TREE;
 
+  timevar_push (TV_NAME_LOOKUP);
   b = innermost_nonclass_level ();
 
   if (b->kind == sk_namespace)
@@ -4792,7 +4612,7 @@ lookup_name_innermost_nonclass_level_1 (tree name)
 	  if (binding->scope == b
 	      && !(TREE_CODE (binding->value) == VAR_DECL
 		   && DECL_DEAD_FOR_LOCAL (binding->value)))
-	    return binding->value;
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, binding->value);
 
 	  if (b->kind == sk_cleanup)
 	    b = b->level_chain;
@@ -4801,68 +4621,7 @@ lookup_name_innermost_nonclass_level_1 (tree name)
 	}
     }
 
-  return t;
-}
-
-/* Wrapper for lookup_name_innermost_nonclass_level_1.  */
-
-tree
-lookup_name_innermost_nonclass_level (tree name)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_name_innermost_nonclass_level_1 (name);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
-}
-
-/* Given an identifier node (NAME), look up the name in the parameter list
-   (PARAM) of the function declaration that is being parsed, and return the
-   parm_decl if found. The parameter list can be either a tree list when
-   obtained from a cp_declarator object (e.g. when invoked from
-   cp_parser_init_declarator) or simply a chain of parameters when we have
-   the function decl (e.g. when invoked from
-   cp_parser_late_parsing_attribute_arg_lists).  */
-
-static tree
-lookup_name_in_func_params_1 (tree param, tree name)
-{
-  /* If the compiler is instructed not to bind the names (in lock attributes)
-     to function parameters, just treat it as if the name lookup fails.  */
-  if (!warn_thread_attr_bind_param)
-    return unqualified_name_lookup_error (name);
-
-  gcc_assert (TREE_CODE (name) == IDENTIFIER_NODE && param);
-
-  for ( ; param; param = TREE_CHAIN (param))
-    {
-      tree param_decl;
-      if (TREE_CODE (param) == TREE_LIST)
-        param_decl = TREE_VALUE (param);
-      else
-        {
-          gcc_assert (DECL_P (param));
-          param_decl = param;
-        }
-      /* If param_decl is indeed a decl (it could be a VOID_TYPE if the
-         function has no parameter) and matches NAME, return it.  */
-      if (DECL_P (param_decl) && DECL_NAME (param_decl) == name)
-        return param_decl;
-    }
-
-  return unqualified_name_lookup_error (name);
-}
-
-/* Wrapper for lookup_name_in_func_params_1.  */
-
-tree
-lookup_name_in_func_params (tree param, tree name)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_name_in_func_params_1 (param, name);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 }
 
 /* Returns true iff DECL is a block-scope extern declaration of a function
@@ -4900,7 +4659,7 @@ lookup_type_current_level (tree name)
 {
   tree t = NULL_TREE;
 
-  timevar_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   gcc_assert (current_binding_level->kind != sk_namespace);
 
   if (REAL_IDENTIFIER_TYPE_VALUE (name) != NULL_TREE
@@ -4910,10 +4669,8 @@ lookup_type_current_level (tree name)
       while (1)
 	{
 	  if (purpose_member (name, b->type_shadowed))
-	    {
-	      t = REAL_IDENTIFIER_TYPE_VALUE (name);
-	      break;
-	    }
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP,
+				    REAL_IDENTIFIER_TYPE_VALUE (name));
 	  if (b->kind == sk_cleanup)
 	    b = b->level_chain;
 	  else
@@ -4921,8 +4678,7 @@ lookup_type_current_level (tree name)
 	}
     }
 
-  timevar_stop (TV_NAME_LOOKUP);
-  return t;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, t);
 }
 
 /* [basic.lookup.koenig] */
@@ -5390,11 +5146,13 @@ arg_assoc (struct arg_lookup *k, tree n)
 /* Performs Koenig lookup depending on arguments, where fns
    are the functions found in normal lookup.  */
 
-static tree
-lookup_arg_dependent_1 (tree name, tree fns, VEC(tree,gc) *args,
-			bool include_std)
+tree
+lookup_arg_dependent (tree name, tree fns, VEC(tree,gc) *args,
+		      bool include_std)
 {
   struct arg_lookup k;
+
+  timevar_push (TV_NAME_LOOKUP);
 
   /* Remove any hidden friend functions from the list of functions
      found so far.  They will be added back by arg_assoc_class as
@@ -5431,37 +5189,23 @@ lookup_arg_dependent_1 (tree name, tree fns, VEC(tree,gc) *args,
   release_tree_vector (k.classes);
   release_tree_vector (k.namespaces);
     
-  return fns;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, fns);
 }
-
-/* Wrapper for lookup_arg_dependent_1.  */
-
-tree
-lookup_arg_dependent (tree name, tree fns, VEC(tree,gc) *args,
-                      bool include_std)
-{
-  tree ret;
-  bool subtime;
-  subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = lookup_arg_dependent_1 (name, fns, args, include_std);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
-}
-
 
 /* Add namespace to using_directives. Return NULL_TREE if nothing was
    changed (i.e. there was already a directive), or the fresh
    TREE_LIST otherwise.  */
 
 static tree
-push_using_directive_1 (tree used)
+push_using_directive (tree used)
 {
   tree ud = current_binding_level->using_directives;
   tree iter, ancestor;
 
+  timevar_push (TV_NAME_LOOKUP);
   /* Check if we already have this.  */
   if (purpose_member (used, ud) != NULL_TREE)
-    return NULL_TREE;
+    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, NULL_TREE);
 
   ancestor = namespace_ancestor (current_decl_namespace (), used);
   ud = current_binding_level->using_directives;
@@ -5472,19 +5216,7 @@ push_using_directive_1 (tree used)
   for (iter = DECL_NAMESPACE_USING (used); iter; iter = TREE_CHAIN (iter))
     push_using_directive (TREE_PURPOSE (iter));
 
-  return ud;
-}
-
-/* Wrapper for push_using_directive_1.  */
-
-static tree
-push_using_directive (tree used)
-{
-  tree ret;
-  timevar_start (TV_NAME_LOOKUP);
-  ret = push_using_directive_1 (used);
-  timevar_stop (TV_NAME_LOOKUP);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, ud);
 }
 
 /* The type TYPE is being declared.  If it is a class template, or a
@@ -5577,12 +5309,13 @@ maybe_process_template_type_declaration (tree type, int is_friend,
 
    Returns TYPE upon success and ERROR_MARK_NODE otherwise.  */
 
-static tree
-pushtag_1 (tree name, tree type, tag_scope scope)
+tree
+pushtag (tree name, tree type, tag_scope scope)
 {
   struct cp_binding_level *b;
   tree decl;
 
+  timevar_push (TV_NAME_LOOKUP);
   b = current_binding_level;
   while (/* Cleanup scopes are not scopes from the point of view of
 	    the language.  */
@@ -5607,7 +5340,7 @@ pushtag_1 (tree name, tree type, tag_scope scope)
   gcc_assert (TREE_CODE (name) == IDENTIFIER_NODE);
 
   /* Do C++ gratuitous typedefing.  */
-  if (identifier_type_value_1 (name) != type)
+  if (IDENTIFIER_TYPE_VALUE (name) != type)
     {
       tree tdef;
       int in_class = 0;
@@ -5653,12 +5386,12 @@ pushtag_1 (tree name, tree type, tag_scope scope)
       decl = maybe_process_template_type_declaration
 	(type, scope == ts_within_enclosing_non_class, b);
       if (decl == error_mark_node)
-	return decl;
+	POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 
       if (b->kind == sk_class)
 	{
 	  if (!TYPE_BEING_DEFINED (current_class_type))
-	    return error_mark_node;
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, error_mark_node);
 
 	  if (!PROCESSING_REAL_TEMPLATE_DECL_P ())
 	    /* Put this TYPE_DECL on the TYPE_FIELDS list for the
@@ -5671,9 +5404,9 @@ pushtag_1 (tree name, tree type, tag_scope scope)
 	}
       else if (b->kind != sk_template_parms)
 	{
-	  decl = pushdecl_with_scope_1 (decl, b, /*is_friend=*/false);
+	  decl = pushdecl_with_scope (decl, b, /*is_friend=*/false);
 	  if (decl == error_mark_node)
-	    return decl;
+	    POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, decl);
 	}
 
       if (! in_class)
@@ -5712,19 +5445,7 @@ pushtag_1 (tree name, tree type, tag_scope scope)
   TREE_PUBLIC (decl) = 1;
   determine_visibility (decl);
 
-  return type;
-}
-
-/* Wrapper for pushtag_1.  */
-
-tree
-pushtag (tree name, tree type, tag_scope scope)
-{
-  tree ret;
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  ret = pushtag_1 (name, type, scope);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-  return ret;
+  POP_TIMEVAR_AND_RETURN (TV_NAME_LOOKUP, type);
 }
 
 /* Subroutines for reverting temporarily to top-level for instantiation
@@ -5762,7 +5483,7 @@ store_bindings (tree names, VEC(cxx_saved_binding,gc) **old_bindings)
 {
   tree t;
 
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   for (t = names; t; t = TREE_CHAIN (t))
     {
       tree id;
@@ -5774,7 +5495,7 @@ store_bindings (tree names, VEC(cxx_saved_binding,gc) **old_bindings)
 
       store_binding (id, old_bindings);
     }
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 /* Like store_bindings, but NAMES is a vector of cp_class_binding
@@ -5787,10 +5508,10 @@ store_class_bindings (VEC(cp_class_binding,gc) *names,
   size_t i;
   cp_class_binding *cb;
 
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   for (i = 0; VEC_iterate(cp_class_binding, names, i, cb); ++i)
     store_binding (cb->identifier, old_bindings);
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
 void
@@ -5802,7 +5523,7 @@ push_to_top_level (void)
   size_t i;
   bool need_pop;
 
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
+  timevar_push (TV_NAME_LOOKUP);
   s = ggc_alloc_cleared_saved_scope ();
 
   b = scope_chain ? current_binding_level : 0;
@@ -5862,16 +5583,17 @@ push_to_top_level (void)
   push_class_stack ();
   cp_unevaluated_operand = 0;
   c_inhibit_evaluation_warnings = 0;
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
+  timevar_pop (TV_NAME_LOOKUP);
 }
 
-static void
-pop_from_top_level_1 (void)
+void
+pop_from_top_level (void)
 {
   struct saved_scope *s = scope_chain;
   cxx_saved_binding *saved;
   size_t i;
 
+  timevar_push (TV_NAME_LOOKUP);
   /* Clear out class-level bindings cache.  */
   if (previous_class_level)
     invalidate_class_lookup_cache ();
@@ -5895,18 +5617,8 @@ pop_from_top_level_1 (void)
   current_function_decl = s->function_decl;
   cp_unevaluated_operand = s->unevaluated_operand;
   c_inhibit_evaluation_warnings = s->inhibit_evaluation_warnings;
+  timevar_pop (TV_NAME_LOOKUP);
 }
-
-/* Wrapper for pop_from_top_level_1.  */
-
-void
-pop_from_top_level (void)
-{
-  bool subtime = timevar_cond_start (TV_NAME_LOOKUP);
-  pop_from_top_level_1 ();
-  timevar_cond_stop (TV_NAME_LOOKUP, subtime);
-}
-
 
 /* Pop off extraneous binding levels left over due to syntax errors.
 

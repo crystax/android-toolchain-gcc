@@ -34,9 +34,7 @@ enum hist_type
   HIST_TYPE_INDIR_CALL,   /* Tries to identify the function that is (almost)
 			    called in indirect call */
   HIST_TYPE_AVERAGE,	/* Compute average value (sum of all values).  */
-  HIST_TYPE_IOR,	/* Used to compute expected alignment.  */
-  HIST_TYPE_INDIR_CALL_TOPN  /* Tries to identify the top N most frequently
-				called functions in indirect call.  */
+  HIST_TYPE_IOR		/* Used to compute expected alignment.  */
 };
 
 #define COUNTER_FOR_HIST_TYPE(TYPE) ((int) (TYPE) + GCOV_FIRST_VALUE_COUNTER)
@@ -103,8 +101,6 @@ extern void gimple_gen_const_delta_profiler (histogram_value,
 					     unsigned, unsigned);
 extern void gimple_gen_average_profiler (histogram_value, unsigned, unsigned);
 extern void gimple_gen_ior_profiler (histogram_value, unsigned, unsigned);
-extern void gimple_gen_reusedist (void);
-extern void optimize_reusedist (void);
 
 /* In profile.c.  */
 extern void init_branch_prob (void);
@@ -112,3 +108,4 @@ extern void branch_prob (void);
 extern void end_branch_prob (void);
 
 #endif	/* GCC_VALUE_PROF_H */
+

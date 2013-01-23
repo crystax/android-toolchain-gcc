@@ -1,5 +1,5 @@
 /* Data references and dependences detectors.
-   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011
+   Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012
    Free Software Foundation, Inc.
    Contributed by Sebastian Pop <pop@cri.ensmp.fr>
 
@@ -84,6 +84,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "tree-scalar-evolution.h"
 #include "tree-pass.h"
 #include "langhooks.h"
+#include "tree-affine.h"
 
 static struct datadep_stats
 {
@@ -721,11 +722,11 @@ canonicalize_base_object_address (tree addr)
 }
 
 /* Analyzes the behavior of the memory reference DR in the innermost loop or
-   basic block that contains it. Returns true if analysis succeed or false
+   basic block that contains it.  Returns true if analysis succeed or false
    otherwise.  */
 
 bool
-dr_analyze_innermost (struct data_reference *dr)
+dr_analyze_innermost (struct data_reference *dr, struct loop *nest)
 {
   gimple stmt = DR_STMT (dr);
   struct loop *loop = loop_containing_stmt (stmt);
@@ -768,14 +769,25 @@ dr_analyze_innermost (struct data_reference *dr)
     }
   else
     base = build_fold_addr_expr (base);
+
   if (in_loop)
     {
       if (!simple_iv (loop, loop_containing_stmt (stmt), base, &base_iv,
                       false))
         {
-          if (dump_file && (dump_flags & TDF_DETAILS))
-	    fprintf (dump_file, "failed: evolution of base is not affine.\n");
-          return false;
+          if (nest)
+            {
+              if (dump_file && (dump_flags & TDF_DETAILS))
+                fprintf (dump_file, "failed: evolution of base is not"
+                                    " affine.\n");
+              return false;
+            }
+          else
+            {
+              base_iv.base = base;
+              base_iv.step = ssize_int (0);
+              base_iv.no_overflow = true;
+            }
         }
     }
   else
@@ -800,10 +812,18 @@ dr_analyze_innermost (struct data_reference *dr)
       else if (!simple_iv (loop, loop_containing_stmt (stmt),
                            poffset, &offset_iv, false))
         {
-          if (dump_file && (dump_flags & TDF_DETAILS))
-            fprintf (dump_file, "failed: evolution of offset is not"
-                                " affine.\n");
-          return false;
+          if (nest)
+            {
+              if (dump_file && (dump_flags & TDF_DETAILS))
+                fprintf (dump_file, "failed: evolution of offset is not"
+                                    " affine.\n");
+              return false;
+            }
+          else
+            {
+              offset_iv.base = poffset;
+              offset_iv.step = ssize_int (0);
+            }
         }
     }
 
@@ -842,30 +862,30 @@ dr_analyze_indices (struct data_reference *dr, loop_p nest, loop_p loop)
   tree base, off, access_fn = NULL_TREE;
   basic_block before_loop = NULL;
 
-  if (nest)
-    before_loop = block_before_loop (nest);
+  if (!nest)
+    {
+      DR_BASE_OBJECT (dr) = ref;
+      DR_ACCESS_FNS (dr) = NULL;
+      return;
+    }
+
+  before_loop = block_before_loop (nest);
 
   while (handled_component_p (aref))
     {
       if (TREE_CODE (aref) == ARRAY_REF)
 	{
 	  op = TREE_OPERAND (aref, 1);
-	  if (nest)
-	    {
-  	      access_fn = analyze_scalar_evolution (loop, op);
-	      access_fn = instantiate_scev (before_loop, loop, access_fn);
-	      VEC_safe_push (tree, heap, access_fns, access_fn);
-	    }
-
+  	  access_fn = analyze_scalar_evolution (loop, op);
+	  access_fn = instantiate_scev (before_loop, loop, access_fn);
+	  VEC_safe_push (tree, heap, access_fns, access_fn);
 	  TREE_OPERAND (aref, 1) = build_int_cst (TREE_TYPE (op), 0);
 	}
 
       aref = TREE_OPERAND (aref, 0);
     }
 
-  if (nest
-      && (INDIRECT_REF_P (aref)
-	  || TREE_CODE (aref) == MEM_REF))
+  if (INDIRECT_REF_P (aref) || TREE_CODE (aref) == MEM_REF)
     {
       op = TREE_OPERAND (aref, 0);
       access_fn = analyze_scalar_evolution (loop, op);
@@ -967,7 +987,7 @@ create_data_ref (loop_p nest, loop_p loop, tree memref, gimple stmt,
   DR_REF (dr) = memref;
   DR_IS_READ (dr) = is_read;
 
-  dr_analyze_innermost (dr);
+  dr_analyze_innermost (dr, nest);
   dr_analyze_indices (dr, nest, loop);
   dr_analyze_alias (dr);
 
@@ -989,6 +1009,48 @@ create_data_ref (loop_p nest, loop_p loop, tree memref, gimple stmt,
     }
 
   return dr;
+}
+
+/* Check if OFFSET1 and OFFSET2 (DR_OFFSETs of some data-refs) are identical
+   expressions.  */
+static bool
+dr_equal_offsets_p1 (tree offset1, tree offset2)
+{
+  bool res;
+
+  STRIP_NOPS (offset1);
+  STRIP_NOPS (offset2);
+
+  if (offset1 == offset2)
+    return true;
+
+  if (TREE_CODE (offset1) != TREE_CODE (offset2)
+      || (!BINARY_CLASS_P (offset1) && !UNARY_CLASS_P (offset1)))
+    return false;
+
+  res = dr_equal_offsets_p1 (TREE_OPERAND (offset1, 0),
+                             TREE_OPERAND (offset2, 0));
+
+  if (!res || !BINARY_CLASS_P (offset1))
+    return res;
+
+  res = dr_equal_offsets_p1 (TREE_OPERAND (offset1, 1),
+                             TREE_OPERAND (offset2, 1));
+
+  return res;
+}
+
+/* Check if DRA and DRB have equal offsets.  */
+bool
+dr_equal_offsets_p (struct data_reference *dra,
+                    struct data_reference *drb)
+{
+  tree offset1, offset2;
+
+  offset1 = DR_OFFSET (dra);
+  offset2 = DR_OFFSET (drb);
+
+  return dr_equal_offsets_p1 (offset1, offset2);
 }
 
 /* Returns true if FNA == FNB.  */
@@ -1240,13 +1302,32 @@ object_address_invariant_in_loop_p (const struct loop *loop, const_tree obj)
 }
 
 /* Returns false if we can prove that data references A and B do not alias,
-   true otherwise.  */
+   true otherwise.  If LOOP_NEST is false no cross-iteration aliases are
+   considered.  */
 
 bool
-dr_may_alias_p (const struct data_reference *a, const struct data_reference *b)
+dr_may_alias_p (const struct data_reference *a, const struct data_reference *b,
+		bool loop_nest)
 {
   tree addr_a = DR_BASE_OBJECT (a);
   tree addr_b = DR_BASE_OBJECT (b);
+
+  /* If we are not processing a loop nest but scalar code we
+     do not need to care about possible cross-iteration dependences
+     and thus can process the full original reference.  Do so,
+     similar to how loop invariant motion applies extra offset-based
+     disambiguation.  */
+  if (!loop_nest)
+    {
+      aff_tree off1, off2;
+      double_int size1, size2;
+      get_inner_reference_aff (DR_REF (a), &off1, &size1);
+      get_inner_reference_aff (DR_REF (b), &off2, &size2);
+      aff_combination_scale (&off1, double_int_minus_one);
+      aff_combination_add (&off2, &off1);
+      if (aff_comb_cannot_overlap_p (&off2, size1, size2))
+	return false;
+    }
 
   if (DR_IS_WRITE (a) && DR_IS_WRITE (b))
     return refs_output_dependent_p (addr_a, addr_b);
@@ -1285,7 +1366,7 @@ initialize_data_dependence_relation (struct data_reference *a,
     }
 
   /* If the data references do not alias, then they are independent.  */
-  if (!dr_may_alias_p (a, b))
+  if (!dr_may_alias_p (a, b, loop_nest != NULL))
     {
       DDR_ARE_DEPENDENT (res) = chrec_known;
       return res;
@@ -4162,7 +4243,7 @@ get_references_in_stmt (gimple stmt, VEC (data_ref_loc, heap) **references)
   if ((stmt_code == GIMPLE_CALL
        && !(gimple_call_flags (stmt) & (ECF_CONST | ECF_PURE)))
       || (stmt_code == GIMPLE_ASM
-	  && gimple_asm_volatile_p (stmt)))
+	  && (gimple_asm_volatile_p (stmt) || gimple_vuse (stmt))))
     clobbers_memory = true;
 
   if (!gimple_vuse (stmt))
@@ -4294,7 +4375,7 @@ graphite_find_data_references_in_stmt (loop_p nest, loop_p loop, gimple stmt,
    DATAREFS.  Returns chrec_dont_know when failing to analyze a
    difficult case, returns NULL_TREE otherwise.  */
 
-static tree
+tree
 find_data_references_in_bb (struct loop *loop, basic_block bb,
                             VEC (data_reference_p, heap) **datarefs)
 {
@@ -5143,7 +5224,7 @@ stmt_with_adjacent_zero_store_dr_p (gimple stmt)
   DR_STMT (dr) = stmt;
   DR_REF (dr) = op0;
 
-  res = dr_analyze_innermost (dr)
+  res = dr_analyze_innermost (dr, loop_containing_stmt (stmt))
     && stride_of_unit_type_p (DR_STEP (dr), TREE_TYPE (op0));
 
   free_data_ref (dr);
@@ -5183,7 +5264,7 @@ ref_base_address (gimple stmt, data_ref_loc *ref)
 
   DR_STMT (dr) = stmt;
   DR_REF (dr) = *ref->pos;
-  dr_analyze_innermost (dr);
+  dr_analyze_innermost (dr, loop_containing_stmt (stmt));
   base_address = DR_BASE_ADDRESS (dr);
 
   if (!base_address)

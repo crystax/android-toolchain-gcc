@@ -73,15 +73,15 @@ enum vect_def_type {
 /************************************************************************
   SLP
  ************************************************************************/
+typedef void *slp_void_p;
+DEF_VEC_P (slp_void_p);
+DEF_VEC_ALLOC_P (slp_void_p, heap);
 
-/* A computation tree of an SLP instance. Each node corresponds to a group of
+/* A computation tree of an SLP instance.  Each node corresponds to a group of
    stmts to be packed in a SIMD stmt.  */
 typedef struct _slp_tree {
-  /* Only binary and unary operations are supported. LEFT child corresponds to
-     the first operand and RIGHT child to the second if the operation is
-     binary.  */
-  struct _slp_tree *left;
-  struct _slp_tree *right;
+  /* Nodes that contain def-stmts of this node statements operands.  */
+  VEC (slp_void_p, heap) *children;
   /* A group of scalar stmts to be vectorized together.  */
   VEC (gimple, heap) *stmts;
   /* Vectorized stmt/s.  */
@@ -146,13 +146,31 @@ DEF_VEC_ALLOC_P(slp_instance, heap);
 #define SLP_INSTANCE_LOADS(S)                    (S)->loads
 #define SLP_INSTANCE_FIRST_LOAD_STMT(S)          (S)->first_load
 
-#define SLP_TREE_LEFT(S)                         (S)->left
-#define SLP_TREE_RIGHT(S)                        (S)->right
+#define SLP_TREE_CHILDREN(S)                     (S)->children
 #define SLP_TREE_SCALAR_STMTS(S)                 (S)->stmts
 #define SLP_TREE_VEC_STMTS(S)                    (S)->vec_stmts
 #define SLP_TREE_NUMBER_OF_VEC_STMTS(S)          (S)->vec_stmts_size
 #define SLP_TREE_OUTSIDE_OF_LOOP_COST(S)         (S)->cost.outside_of_loop
 #define SLP_TREE_INSIDE_OF_LOOP_COST(S)          (S)->cost.inside_of_loop
+
+/* This structure is used in creation of an SLP tree.  Each instance
+   corresponds to the same operand in a group of scalar stmts in an SLP
+   node.  */
+typedef struct _slp_oprnd_info
+{
+  /* Def-stmts for the operands.  */
+  VEC (gimple, heap) *def_stmts;
+  /* Information about the first statement, its vector def-type, type, the
+     operand itself in case it's constant, and an indication if it's a pattern
+     stmt.  */
+  enum vect_def_type first_dt;
+  tree first_def_type;
+  tree first_const_oprnd;
+  bool first_pattern;
+} *slp_oprnd_info;
+
+DEF_VEC_P(slp_oprnd_info);
+DEF_VEC_ALLOC_P(slp_oprnd_info, heap);
 
 
 typedef struct _vect_peel_info
@@ -464,6 +482,9 @@ typedef struct _stmt_vec_info {
         pattern).  */
   gimple related_stmt;
 
+  /* Used to keep a def stmt of a pattern stmt if such exists.  */
+  gimple pattern_def_stmt;
+
   /* List of datarefs that are known to have the same alignment as the dataref
      of this stmt.  */
   VEC(dr_p,heap) *same_align_refs;
@@ -531,6 +552,7 @@ typedef struct _stmt_vec_info {
 
 #define STMT_VINFO_IN_PATTERN_P(S)         (S)->in_pattern_p
 #define STMT_VINFO_RELATED_STMT(S)         (S)->related_stmt
+#define STMT_VINFO_PATTERN_DEF_STMT(S)     (S)->pattern_def_stmt
 #define STMT_VINFO_SAME_ALIGN_REFS(S)      (S)->same_align_refs
 #define STMT_VINFO_DEF_TYPE(S)             (S)->def_type
 #define STMT_VINFO_DR_GROUP_FIRST_DR(S)    (S)->first_dr
@@ -794,9 +816,9 @@ extern void free_stmt_vec_info (gimple stmt);
 extern tree vectorizable_function (gimple, tree, tree);
 extern void vect_model_simple_cost (stmt_vec_info, int, enum vect_def_type *,
                                     slp_tree);
-extern void vect_model_store_cost (stmt_vec_info, int, enum vect_def_type,
-                                   slp_tree);
-extern void vect_model_load_cost (stmt_vec_info, int, slp_tree);
+extern void vect_model_store_cost (stmt_vec_info, int, bool,
+				   enum vect_def_type, slp_tree);
+extern void vect_model_load_cost (stmt_vec_info, int, bool, slp_tree);
 extern void vect_finish_stmt_generation (gimple, gimple,
                                          gimple_stmt_iterator *);
 extern bool vect_mark_stmts_to_be_vectorized (loop_vec_info);
@@ -810,10 +832,13 @@ extern bool vect_transform_stmt (gimple, gimple_stmt_iterator *,
 extern void vect_remove_stores (gimple);
 extern bool vect_analyze_stmt (gimple, bool *, slp_tree);
 extern bool vectorizable_condition (gimple, gimple_stmt_iterator *, gimple *,
-                                    tree, int);
+                                    tree, int, slp_tree);
 extern void vect_get_load_cost (struct data_reference *, int, bool,
                                 unsigned int *, unsigned int *);
 extern void vect_get_store_cost (struct data_reference *, int, unsigned int *);
+extern bool vect_supportable_shift (enum tree_code, tree);
+extern void vect_get_vec_defs (tree, tree, gimple, VEC (tree, heap) **,
+			       VEC (tree, heap) **, slp_tree, int);
 
 /* In tree-vect-data-refs.c.  */
 extern bool vect_can_force_dr_alignment_p (const_tree, unsigned int);
@@ -829,21 +854,22 @@ extern bool vect_verify_datarefs_alignment (loop_vec_info, bb_vec_info);
 extern bool vect_analyze_data_ref_accesses (loop_vec_info, bb_vec_info);
 extern bool vect_prune_runtime_alias_test_list (loop_vec_info);
 extern bool vect_analyze_data_refs (loop_vec_info, bb_vec_info, int *);
-extern tree vect_create_data_ref_ptr (gimple, struct loop *, tree, tree *,
-                                      gimple *, bool, bool *);
+extern tree vect_create_data_ref_ptr (gimple, tree, struct loop *, tree,
+				      tree *, gimple *, bool, bool *);
 extern tree bump_vector_ptr (tree, gimple, gimple_stmt_iterator *, gimple, tree);
 extern tree vect_create_destination_var (tree, tree);
-extern bool vect_strided_store_supported (tree);
-extern bool vect_strided_load_supported (tree);
-extern bool vect_permute_store_chain (VEC(tree,heap) *,unsigned int, gimple,
+extern bool vect_strided_store_supported (tree, unsigned HOST_WIDE_INT);
+extern bool vect_store_lanes_supported (tree, unsigned HOST_WIDE_INT);
+extern bool vect_strided_load_supported (tree, unsigned HOST_WIDE_INT);
+extern bool vect_load_lanes_supported (tree, unsigned HOST_WIDE_INT);
+extern void vect_permute_store_chain (VEC(tree,heap) *,unsigned int, gimple,
                                     gimple_stmt_iterator *, VEC(tree,heap) **);
 extern tree vect_setup_realignment (gimple, gimple_stmt_iterator *, tree *,
                                     enum dr_alignment_support, tree,
                                     struct loop **);
-extern bool vect_permute_load_chain (VEC(tree,heap) *,unsigned int, gimple,
-                                    gimple_stmt_iterator *, VEC(tree,heap) **);
-extern bool vect_transform_strided_load (gimple, VEC(tree,heap) *, int,
+extern void vect_transform_strided_load (gimple, VEC(tree,heap) *, int,
                                          gimple_stmt_iterator *);
+extern void vect_record_strided_load_vectors (gimple, VEC(tree,heap) *);
 extern int vect_get_place_in_interleaving_chain (gimple, gimple);
 extern tree vect_get_new_vect_var (tree, enum vect_var_kind, const char *);
 extern tree vect_create_addr_base_for_vector_ref (gimple, gimple_seq *,
@@ -879,8 +905,9 @@ extern void vect_update_slp_costs_according_to_vf (loop_vec_info);
 extern bool vect_analyze_slp (loop_vec_info, bb_vec_info);
 extern void vect_make_slp_decision (loop_vec_info);
 extern void vect_detect_hybrid_slp (loop_vec_info);
-extern void vect_get_slp_defs (tree, tree, slp_tree, VEC (tree,heap) **,
-                               VEC (tree,heap) **, int);
+extern void vect_get_slp_defs (VEC (tree, heap) *, slp_tree,
+			       VEC (slp_void_p, heap) **, int);
+
 extern LOC find_bb_location (basic_block);
 extern bb_vec_info vect_slp_analyze_bb (basic_block);
 extern void vect_slp_transform_bb (basic_block);
@@ -889,9 +916,9 @@ extern void vect_slp_transform_bb (basic_block);
 /* Pattern recognition functions.
    Additional pattern recognition functions can (and will) be added
    in the future.  */
-typedef gimple (* vect_recog_func_ptr) (gimple, tree *, tree *);
-#define NUM_PATTERNS 4
-void vect_pattern_recog (loop_vec_info);
+typedef gimple (* vect_recog_func_ptr) (VEC (gimple, heap) **, tree *, tree *);
+#define NUM_PATTERNS 7 
+void vect_pattern_recog (loop_vec_info, bb_vec_info);
 
 /* In tree-vectorizer.c.  */
 unsigned vectorize_loops (void);

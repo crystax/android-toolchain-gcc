@@ -1,6 +1,6 @@
 /* Definitions for MIPS systems using GNU userspace.
    Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
-   2007, 2008, 2010, 2011 Free Software Foundation, Inc.
+   2007, 2008, 2010, 2011, 2013 Free Software Foundation, Inc.
 
 This file is part of GCC.
 
@@ -37,7 +37,7 @@ along with GCC; see the file COPYING3.  If not see
     /* The GNU C++ standard library requires this.  */		\
     if (c_dialect_cxx ())					\
       builtin_define ("_GNU_SOURCE");				\
-    ANDROID_TARGET_OS_CPP_BUILTINS();				\
+      ANDROID_TARGET_OS_CPP_BUILTINS();     \
   } while (0)
 
 #undef SUBTARGET_CPP_SPEC
@@ -124,7 +124,7 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
 #endif
 
 #define LINUX_DRIVER_SELF_SPECS \
-  LINUX_OR_ANDROID_CC(NO_SHARED_SPECS, "")                              \
+  LINUX_OR_ANDROID_CC(NO_SHARED_SPECS, "")							\
   MARCH_MTUNE_NATIVE_SPECS,						\
   /* -mplt has no effect without -mno-shared.  Simplify later		\
      specs handling by removing a redundant option.  */			\
@@ -143,30 +143,30 @@ extern const char *host_detect_local_cpu (int argc, const char **argv);
   "%{Ofast|ffast-math|funsafe-math-optimizations:crtfastmath.o%s}"
 
 #undef  LINK_SPEC
-#define LINK_SPEC							\
-  LINUX_OR_ANDROID_LD (LINUX_SUBTARGET_LINK_SPEC,			\
-		       LINUX_SUBTARGET_LINK_SPEC " " ANDROID_LINK_SPEC)
+#define LINK_SPEC              \
+  LINUX_OR_ANDROID_LD (LINUX_SUBTARGET_LINK_SPEC,      \
+          LINUX_SUBTARGET_LINK_SPEC " " ANDROID_LINK_SPEC)
 
 #undef  SUBTARGET_CC1_SPEC
-#define SUBTARGET_CC1_SPEC						\
-  LINUX_OR_ANDROID_CC (LINUX_SUBTARGET_CC1_SPEC,			\
-		       LINUX_SUBTARGET_CC1_SPEC " " ANDROID_CC1_SPEC("-fpic"))
+#define SUBTARGET_CC1_SPEC           \
+  LINUX_OR_ANDROID_CC (LINUX_SUBTARGET_CC1_SPEC,     \
+          LINUX_SUBTARGET_CC1_SPEC " " ANDROID_CC1_SPEC("-fpic"))
 
 #undef  CC1PLUS_SPEC
-#define CC1PLUS_SPEC							\
+#define CC1PLUS_SPEC             \
   LINUX_OR_ANDROID_CC ("", ANDROID_CC1PLUS_SPEC)
 
 #undef  LIB_SPEC
 #define LIB_SPEC							\
   LINUX_OR_ANDROID_LD (LINUX_SUBTARGET_LIB_SPEC,			\
-		       LINUX_SUBTARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
+		  CRYSTAX_LIB_SPEC " " LINUX_SUBTARGET_LIB_SPEC_LESS_PTHREAD " " ANDROID_LIB_SPEC)
 
 #undef STARTFILE_SPEC
-#define STARTFILE_SPEC							\
+#define STARTFILE_SPEC             \
   LINUX_OR_ANDROID_LD (GNU_USER_TARGET_STARTFILE_SPEC, ANDROID_STARTFILE_SPEC)
 
 #undef ENDFILE_SPEC
-#define ENDFILE_SPEC							\
+#define ENDFILE_SPEC             \
   LINUX_OR_ANDROID_LD (LINUX_TARGET_MATHFILE_SPEC " "                  \
                       GNU_USER_TARGET_ENDFILE_SPEC,                    \
                       LINUX_TARGET_MATHFILE_SPEC " "                   \

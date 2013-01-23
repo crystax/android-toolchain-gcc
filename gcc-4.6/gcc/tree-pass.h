@@ -357,7 +357,6 @@ extern struct gimple_opt_pass pass_lower_eh;
 extern struct gimple_opt_pass pass_lower_eh_dispatch;
 extern struct gimple_opt_pass pass_lower_resx;
 extern struct gimple_opt_pass pass_build_cfg;
-extern struct gimple_opt_pass pass_direct_call_profile;
 extern struct gimple_opt_pass pass_early_tree_profile;
 extern struct gimple_opt_pass pass_referenced_vars;
 extern struct gimple_opt_pass pass_cleanup_eh;
@@ -447,9 +446,6 @@ extern struct gimple_opt_pass pass_tracer;
 extern struct gimple_opt_pass pass_warn_unused_result;
 extern struct gimple_opt_pass pass_split_functions;
 extern struct gimple_opt_pass pass_feedback_split_functions;
-extern struct gimple_opt_pass pass_threadsafe_analyze;
-extern struct gimple_opt_pass pass_tree_convert_builtin_dispatch;
-extern struct gimple_opt_pass pass_auto_clone;
 
 /* IPA Passes */
 extern struct simple_ipa_opt_pass pass_ipa_lower_emutls;
@@ -474,7 +470,6 @@ extern struct ipa_opt_pass_d pass_ipa_lto_wpa_fixup;
 extern struct ipa_opt_pass_d pass_ipa_lto_finish_out;
 extern struct ipa_opt_pass_d pass_ipa_profile;
 extern struct ipa_opt_pass_d pass_ipa_cdtor_merge;
-extern struct simple_ipa_opt_pass pass_ipa_multiversion_dispatch;
 
 extern struct gimple_opt_pass pass_all_optimizations;
 extern struct gimple_opt_pass pass_cleanup_cfg_post_optimizing;
@@ -505,7 +500,6 @@ extern struct rtl_opt_pass pass_rtl_hoist;
 extern struct rtl_opt_pass pass_rtl_store_motion;
 extern struct rtl_opt_pass pass_cse_after_global_opts;
 extern struct rtl_opt_pass pass_rtl_ifcvt;
-extern struct rtl_opt_pass pass_simplify_got;
 
 extern struct rtl_opt_pass pass_into_cfg_layout_mode;
 extern struct rtl_opt_pass pass_outof_cfg_layout_mode;
@@ -644,9 +638,5 @@ extern bool first_pass_instance;
 
 /* Declare for plugins.  */
 extern void do_per_function_toporder (void (*) (void *), void *);
-
-extern void disable_pass (const char *);
-extern void enable_pass (const char *);
-extern void dump_passes (void);
 
 #endif /* GCC_TREE_PASS_H */

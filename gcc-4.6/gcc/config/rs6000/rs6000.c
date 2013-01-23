@@ -3695,11 +3695,22 @@ rs6000_builtin_vectorization_cost (enum vect_cost_for_stmt type_of_cost,
       case vec_to_scalar:
       case scalar_to_vec:
       case cond_branch_not_taken:
-      case vec_perm:
         return 1;
 
       case cond_branch_taken:
         return 3;
+
+      case vec_perm:
+	if (TARGET_VSX)
+	  return 4;
+	else
+	  return 1;
+
+      case vec_promote_demote:
+	if (TARGET_VSX)
+	  return 5;
+	else
+	  return 1;
 
       case unaligned_load:
         if (TARGET_VSX && TARGET_ALLOW_MOVMISALIGN)
@@ -5135,7 +5146,9 @@ paired_expand_vector_init (rtx target, rtx vals)
   for (i = 0; i < n_elts; ++i)
     {
       x = XVECEXP (vals, 0, i);
-      if (!CONSTANT_P (x))
+      if (!(CONST_INT_P (x)
+	    || GET_CODE (x) == CONST_DOUBLE
+	    || GET_CODE (x) == CONST_FIXED))
 	++n_var;
     }
   if (n_var == 0)
@@ -5287,7 +5300,9 @@ rs6000_expand_vector_init (rtx target, rtx vals)
   for (i = 0; i < n_elts; ++i)
     {
       x = XVECEXP (vals, 0, i);
-      if (!CONSTANT_P (x))
+      if (!(CONST_INT_P (x)
+	    || GET_CODE (x) == CONST_DOUBLE
+	    || GET_CODE (x) == CONST_FIXED))
 	++n_var, one_var = i;
       else if (x != CONST0_RTX (inner_mode))
 	all_const_zero = false;
@@ -5324,28 +5339,25 @@ rs6000_expand_vector_init (rtx target, rtx vals)
   /* Double word values on VSX can use xxpermdi or lxvdsx.  */
   if (VECTOR_MEM_VSX_P (mode) && (mode == V2DFmode || mode == V2DImode))
     {
+      rtx op0 = XVECEXP (vals, 0, 0);
+      rtx op1 = XVECEXP (vals, 0, 1);
       if (all_same)
 	{
-	  rtx element = XVECEXP (vals, 0, 0);
+	  if (!MEM_P (op0) && !REG_P (op0))
+	    op0 = force_reg (inner_mode, op0);
 	  if (mode == V2DFmode)
-	    emit_insn (gen_vsx_splat_v2df (target, element));
+	    emit_insn (gen_vsx_splat_v2df (target, op0));
 	  else
-	    emit_insn (gen_vsx_splat_v2di (target, element));
+	    emit_insn (gen_vsx_splat_v2di (target, op0));
 	}
       else
 	{
+	  op0 = force_reg (inner_mode, op0);
+	  op1 = force_reg (inner_mode, op1);
 	  if (mode == V2DFmode)
-	    {
-	      rtx op0 = copy_to_mode_reg (DFmode, XVECEXP (vals, 0, 0));
-	      rtx op1 = copy_to_mode_reg (DFmode, XVECEXP (vals, 0, 1));
-	      emit_insn (gen_vsx_concat_v2df (target, op0, op1));
-	    }
+	    emit_insn (gen_vsx_concat_v2df (target, op0, op1));
 	  else
-	    {
-	      rtx op0 = copy_to_mode_reg (DImode, XVECEXP (vals, 0, 0));
-	      rtx op1 = copy_to_mode_reg (DImode, XVECEXP (vals, 0, 1));
-	      emit_insn (gen_vsx_concat_v2di (target, op0, op1));
-	    }
+	    emit_insn (gen_vsx_concat_v2di (target, op0, op1));
 	}
       return;
     }
@@ -5359,7 +5371,7 @@ rs6000_expand_vector_init (rtx target, rtx vals)
       if (all_same)
 	{
 	  rtx freg = gen_reg_rtx (V4SFmode);
-	  rtx sreg = copy_to_reg (XVECEXP (vals, 0, 0));
+	  rtx sreg = force_reg (SFmode, XVECEXP (vals, 0, 0));
 
 	  emit_insn (gen_vsx_xscvdpsp_scalar (freg, sreg));
 	  emit_insn (gen_vsx_xxspltw_v4sf (target, freg, const0_rtx));
@@ -5370,13 +5382,13 @@ rs6000_expand_vector_init (rtx target, rtx vals)
 	  rtx dbl_odd  = gen_reg_rtx (V2DFmode);
 	  rtx flt_even = gen_reg_rtx (V4SFmode);
 	  rtx flt_odd  = gen_reg_rtx (V4SFmode);
+	  rtx op0 = force_reg (SFmode, XVECEXP (vals, 0, 0));
+	  rtx op1 = force_reg (SFmode, XVECEXP (vals, 0, 1));
+	  rtx op2 = force_reg (SFmode, XVECEXP (vals, 0, 2));
+	  rtx op3 = force_reg (SFmode, XVECEXP (vals, 0, 3));
 
-	  emit_insn (gen_vsx_concat_v2sf (dbl_even,
-					  copy_to_reg (XVECEXP (vals, 0, 0)),
-					  copy_to_reg (XVECEXP (vals, 0, 1))));
-	  emit_insn (gen_vsx_concat_v2sf (dbl_odd,
-					  copy_to_reg (XVECEXP (vals, 0, 2)),
-					  copy_to_reg (XVECEXP (vals, 0, 3))));
+	  emit_insn (gen_vsx_concat_v2sf (dbl_even, op0, op1));
+	  emit_insn (gen_vsx_concat_v2sf (dbl_odd, op2, op3));
 	  emit_insn (gen_vsx_xvcvdpsp (flt_even, dbl_even));
 	  emit_insn (gen_vsx_xvcvdpsp (flt_odd, dbl_odd));
 	  emit_insn (gen_vec_extract_evenv4sf (target, flt_even, flt_odd));
@@ -7590,17 +7602,14 @@ rs6000_emit_move (rtx dest, rtx source, enum machine_mode mode)
   if (!TARGET_IEEEQUAD && TARGET_LONG_DOUBLE_128
       && mode == TFmode && GET_CODE (operands[1]) == CONST_DOUBLE)
     {
-      /* DImode is used, not DFmode, because simplify_gen_subreg doesn't
-	 know how to get a DFmode SUBREG of a TFmode.  */
-      enum machine_mode imode = (TARGET_E500_DOUBLE ? DFmode : DImode);
-      rs6000_emit_move (simplify_gen_subreg (imode, operands[0], mode, 0),
-			simplify_gen_subreg (imode, operands[1], mode, 0),
-			imode);
-      rs6000_emit_move (simplify_gen_subreg (imode, operands[0], mode,
-					     GET_MODE_SIZE (imode)),
-			simplify_gen_subreg (imode, operands[1], mode,
-					     GET_MODE_SIZE (imode)),
-			imode);
+      rs6000_emit_move (simplify_gen_subreg (DFmode, operands[0], mode, 0),
+			simplify_gen_subreg (DFmode, operands[1], mode, 0),
+			DFmode);
+      rs6000_emit_move (simplify_gen_subreg (DFmode, operands[0], mode,
+					     GET_MODE_SIZE (DFmode)),
+			simplify_gen_subreg (DFmode, operands[1], mode,
+					     GET_MODE_SIZE (DFmode)),
+			DFmode);
       return;
     }
 
@@ -15817,7 +15826,6 @@ void
 print_operand (FILE *file, rtx x, int code)
 {
   int i;
-  HOST_WIDE_INT val;
   unsigned HOST_WIDE_INT uval;
 
   switch (code)
@@ -16258,34 +16266,17 @@ print_operand (FILE *file, rtx x, int code)
 
     case 'W':
       /* MB value for a PowerPC64 rldic operand.  */
-      val = (GET_CODE (x) == CONST_INT
-	     ? INTVAL (x) : CONST_DOUBLE_HIGH (x));
-
-      if (val < 0)
-	i = -1;
-      else
-	for (i = 0; i < HOST_BITS_PER_WIDE_INT; i++)
-	  if ((val <<= 1) < 0)
-	    break;
+      i = clz_hwi (GET_CODE (x) == CONST_INT
+		   ? INTVAL (x) : CONST_DOUBLE_HIGH (x));
 
 #if HOST_BITS_PER_WIDE_INT == 32
-      if (GET_CODE (x) == CONST_INT && i >= 0)
+      if (GET_CODE (x) == CONST_INT && i > 0)
 	i += 32;  /* zero-extend high-part was all 0's */
       else if (GET_CODE (x) == CONST_DOUBLE && i == 32)
-	{
-	  val = CONST_DOUBLE_LOW (x);
-
-	  gcc_assert (val);
-	  if (val < 0)
-	    --i;
-	  else
-	    for ( ; i < 64; i++)
-	      if ((val <<= 1) < 0)
-		break;
-	}
+	i = clz_hwi (CONST_DOUBLE_LOW (x)) + 32;
 #endif
 
-      fprintf (file, "%d", i + 1);
+      fprintf (file, "%d", i);
       return;
 
     case 'x':
@@ -17235,6 +17226,10 @@ rs6000_emit_vector_compare_inner (enum rtx_code code, rtx op0, rtx op1)
     case EQ:
     case GT:
     case GTU:
+    case ORDERED:
+    case UNORDERED:
+    case UNEQ:
+    case LTGT:
       mask = gen_reg_rtx (mode);
       emit_insn (gen_rtx_SET (VOIDmode,
 			      mask,

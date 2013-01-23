@@ -106,6 +106,14 @@ enum symbol_visibility
 };
 #endif
 
+/* The algorithm used to implement -fsched-pressure.  */
+enum sched_pressure_algorithm
+{
+  SCHED_PRESSURE_NONE,
+  SCHED_PRESSURE_WEIGHTED,
+  SCHED_PRESSURE_MODEL
+};
+
 /* The algorithm used for the integrated register allocator (IRA).  */
 enum ira_algorithm
 {
@@ -204,11 +212,4 @@ enum vect_verbosity_levels {
   MAX_VERBOSITY_LEVEL
 };
 
-/* flag_opt_info verbosity levels.  */
-enum opt_info_verbosity_levels {
-  OPT_INFO_NONE = 0,
-  OPT_INFO_MIN  = 1,
-  OPT_INFO_MED  = 2,
-  OPT_INFO_MAX  = 3
-};
 #endif /* ! GCC_FLAG_TYPES_H */

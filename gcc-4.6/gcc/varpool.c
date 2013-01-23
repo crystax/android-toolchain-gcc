@@ -35,9 +35,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "output.h"
 #include "gimple.h"
 #include "tree-flow.h"
-#include "toplev.h"
 #include "flags.h"
-#include "l-ipo.h"
 
 /*  This file contains basic routines manipulating variable pool.
 
@@ -137,7 +135,7 @@ varpool_node (tree decl)
 
   if (!varpool_hash)
     varpool_hash = htab_create_ggc (10, hash_varpool_node,
-                                    eq_varpool_node, NULL);
+					   eq_varpool_node, NULL);
   key.decl = decl;
   slot = (struct varpool_node **)
     htab_find_slot (varpool_hash, &key, INSERT);
@@ -151,7 +149,6 @@ varpool_node (tree decl)
   if (varpool_nodes)
     varpool_nodes->prev = node;
   varpool_nodes = node;
-  node->module_id = current_module_id;
   *slot = node;
   return node;
 }
@@ -277,6 +274,7 @@ debug_varpool (void)
   dump_varpool (stderr);
 }
 
+/* Given an assembler name, lookup node.  */
 struct varpool_node *
 varpool_node_for_asm (tree asmname)
 {
@@ -291,7 +289,6 @@ varpool_node_for_asm (tree asmname)
 
 /* Helper function for finalization code - add node into lists so it will
    be analyzed and compiled.  */
-
 static void
 varpool_enqueue_needed_node (struct varpool_node *node)
 {
@@ -311,7 +308,6 @@ varpool_enqueue_needed_node (struct varpool_node *node)
 
 /* Notify finalize_compilation_unit that given node is reachable
    or needed.  */
-
 void
 varpool_mark_needed_node (struct varpool_node *node)
 {

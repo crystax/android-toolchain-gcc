@@ -1,8 +1,6 @@
-2012-01-26  Cary Coutant  <ccoutant@google.com>
+2012-03-01  Release Manager
 
-	* include/dwarf2.h (enum dwarf_form): Update Fission extensions, add
-	wiki reference.
-	(enum dwarf_attribute): Likewise.
+	* GCC 4.6.3 released.
 
 2011-10-26  Release Manager
 

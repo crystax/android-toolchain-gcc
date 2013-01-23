@@ -111,6 +111,7 @@ vect_get_smallest_scalar_type (gimple stmt, HOST_WIDE_INT *lhs_size_unit,
   if (is_gimple_assign (stmt)
       && (gimple_assign_cast_p (stmt)
           || gimple_assign_rhs_code (stmt) == WIDEN_MULT_EXPR
+          || gimple_assign_rhs_code (stmt) == WIDEN_LSHIFT_EXPR
           || gimple_assign_rhs_code (stmt) == FLOAT_EXPR))
     {
       tree rhs_type = TREE_TYPE (gimple_assign_rhs1 (stmt));
@@ -844,6 +845,24 @@ vect_compute_data_ref_alignment (struct data_reference *dr)
 	}
     }
 
+  /* Similarly, if we're doing basic-block vectorization, we can only use
+     base and misalignment information relative to an innermost loop if the
+     misalignment stays the same throughout the execution of the loop.
+     As above, this is the case if the stride of the dataref evenly divides
+     by the vector size.  */
+  if (!loop)
+    {
+      tree step = DR_STEP (dr);
+      HOST_WIDE_INT dr_step = TREE_INT_CST_LOW (step);
+
+      if (dr_step % GET_MODE_SIZE (TYPE_MODE (vectype)) != 0)
+	{
+	  if (vect_print_dump_info (REPORT_ALIGNMENT))
+	    fprintf (vect_dump, "SLP: step doesn't divide the vector-size.");
+	  misalign = NULL_TREE;
+	}
+    }
+
   base = build_fold_indirect_ref (base_addr);
   alignment = ssize_int (TYPE_ALIGN (vectype)/BITS_PER_UNIT);
 
@@ -1057,6 +1076,9 @@ vect_verify_datarefs_alignment (loop_vec_info loop_vinfo, bb_vec_info bb_vinfo)
       gimple stmt = DR_STMT (dr);
       stmt_vec_info stmt_info = vinfo_for_stmt (stmt);
 
+      if (!STMT_VINFO_RELEVANT_P (stmt_info))
+	continue;
+
       /* For interleaving, only the alignment of the first access matters. 
          Skip statements marked as not vectorizable.  */
       if ((STMT_VINFO_STRIDED_ACCESS (stmt_info)
@@ -1171,17 +1193,11 @@ vect_get_data_access_cost (struct data_reference *dr,
   loop_vec_info loop_vinfo = STMT_VINFO_LOOP_VINFO (stmt_info);
   int vf = LOOP_VINFO_VECT_FACTOR (loop_vinfo);
   int ncopies = vf / nunits;
-  bool supportable_dr_alignment = vect_supportable_dr_alignment (dr, true);
 
-  if (!supportable_dr_alignment)
-    *inside_cost = VECT_MAX_COST;
+  if (DR_IS_READ (dr))
+    vect_get_load_cost (dr, ncopies, true, inside_cost, outside_cost);
   else
-    {
-      if (DR_IS_READ (dr))
-        vect_get_load_cost (dr, ncopies, true, inside_cost, outside_cost);
-      else
-        vect_get_store_cost (dr, ncopies, inside_cost);
-    }
+    vect_get_store_cost (dr, ncopies, inside_cost);
 
   if (vect_print_dump_info (REPORT_COST))
     fprintf (vect_dump, "vect_get_data_access_cost: inside_cost = %d, "
@@ -1495,7 +1511,7 @@ vect_enhance_data_refs_alignment (loop_vec_info loop_vinfo)
       stmt = DR_STMT (dr);
       stmt_info = vinfo_for_stmt (stmt);
 
-      if (!STMT_VINFO_RELEVANT (stmt_info))
+      if (!STMT_VINFO_RELEVANT_P (stmt_info))
 	continue;
 
       /* For interleaving, only the alignment of the first access
@@ -4572,6 +4588,13 @@ vect_can_force_dr_alignment_p (const_tree decl, unsigned int alignment)
     return false;
 
   if (TREE_ASM_WRITTEN (decl))
+    return false;
+
+  /* Do not override explicit alignment set by the user when an explicit
+     section name is also used.  This is a common idiom used by many
+     software projects.  */
+  if (DECL_SECTION_NAME (decl) != NULL_TREE
+      && !DECL_HAS_IMPLICIT_SECTION_NAME_P (decl))
     return false;
 
   if (TREE_STATIC (decl))
