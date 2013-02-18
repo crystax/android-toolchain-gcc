@@ -1,3 +1,19 @@
+2013-01-15  Zhenqiang Chen  <zhenqiang.chen@linaro.org>
+
+	GCC Linaro 4.6-2013.01 released.
+
+	gcc/
+	* LINARO-VERSION: Update.
+
+2013-01-02  Matthew Gretton-Dann  <matthew.gretton-dann@linaro.org>
+
+	Merge from FSF GCC 4.6.3 (svn branches/gcc-4_6-branch 194771).
+
+2012-12-12  Yvan Roux  <yvan.roux@linaro.org>
+
+	gcc/
+	* LINARO-VERSION: Bump version.
+
 2012-12-12  Yvan Roux  <yvan.roux@linaro.org>
 
 	GCC Linaro 4.6-2012.12 released.
