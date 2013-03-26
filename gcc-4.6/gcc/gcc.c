@@ -1,7 +1,7 @@
 /* Compiler driver program that can handle many languages.
    Copyright (C) 1987, 1989, 1992, 1993, 1994, 1995, 1996, 1997, 1998,
    1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009,
-   2010, 2011
+   2010, 2011, 2013
    Free Software Foundation, Inc.
 
 This file is part of GCC.
@@ -657,6 +657,12 @@ proper position among the other output files.  */
     }"PLUGIN_COND_CLOSE" \
     %{flto|flto=*:%<fcompare-debug*} \
     %{flto} %{flto=*} %l " LINK_PIE_SPEC \
+   "%{fuse-ld=gold:%{fuse-ld=bfd:%e-fuse-ld=gold and -fuse-ld=bfd may not be used together}} \
+    %{fuse-ld=gold:%{fuse-ld=mcld:%e-fuse-ld=gold and -fuse-ld=mcld may not be used together}} \
+    %{fuse-ld=mcld:%{fuse-ld=bfd:%e-fuse-ld=mcld and -fuse-ld=bfd may not be used together}} \
+    %{fuse-ld=gold:-use-gold} \
+    %{fuse-ld=mcld:-use-mcld} \
+    %{fuse-ld=bfd:-use-ld}" \
    "%X %{o*} %{e*} %{N} %{n} %{r}\
     %{s} %{t} %{u*} %{z} %{Z} %{!nostdlib:%{!nostartfiles:%S}}\
     %{static:} %{L*} %(mfwrap) %(link_libgcc) %o\
@@ -3775,7 +3781,7 @@ process_command (unsigned int decoded_options_count,
 	    }
 	  else
 	    fname = xstrdup (arg);
- 
+
           if (strcmp (fname, "-") != 0 && access (fname, F_OK) < 0)
 	    perror_with_name (fname);
           else

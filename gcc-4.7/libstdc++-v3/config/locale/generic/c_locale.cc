@@ -1,6 +1,6 @@
 // Wrapper for underlying C-language localization -*- C++ -*-
 
-// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010
+// Copyright (C) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2013
 // Free Software Foundation, Inc.
 //
 // This file is part of the GNU ISO C++ Library.  This library is free
@@ -171,13 +171,22 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       // Assumes __s formatted for "C" locale.
       char* __old = setlocale(LC_ALL, 0);
       char* __sav = 0;
+<<<<<<< HEAD
       if (__old != 0)
       {
+=======
+      if (__old)
+        {
+>>>>>>> origin/master
           const size_t __len = strlen(__old) + 1;
           __sav = new char[__len];
           memcpy(__sav, __old, __len);
           setlocale(LC_ALL, "C");
+<<<<<<< HEAD
       }
+=======
+        }
+>>>>>>> origin/master
 
 #if !__LDBL_HAS_INFINITY__
       errno = 0;
