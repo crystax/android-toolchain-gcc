@@ -64263,6 +64263,12 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <sys/syscall.h>
 	   int lk;
+#if !defined(SYS_gettid)
+#define SYS_gettid __NR_gettid
+#endif
+#if !defined(SYS_futex)
+#define SYS_futex __NR_futex
+#endif
 int
 main ()
 {
@@ -64321,6 +64327,12 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <sys/syscall.h>
 	   int lk;
+#if !defined(SYS_gettid)
+#define SYS_gettid __NR_gettid
+#endif
+#if !defined(SYS_futex)
+#define SYS_futex __NR_futex
+#endif
 int
 main ()
 {
