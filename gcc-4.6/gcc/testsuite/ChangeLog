@@ -1,3 +1,93 @@
+2013-02-23  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/56385
+	* gfortran.dg/proc_ptr_comp_37.f90: New.
+
+2013-02-15  Tobias Burnus  <burnus@net-b.de>
+
+	PR fortran/56318
+	* gcc/testsuite/gfortran.dg/matmul_9.f90: New.
+
+2013-02-13  Tobias Burnus  <burnus@net-b.de>
+
+	Backported from mainline
+	2013-01-07  Tobias Burnus  <burnus@net-b.de>
+		    Uros Bizjak  <ubizjak@gmail.com>
+
+	PR fortran/55852
+	* gfortran.dg/intrinsic_size_3.f90: New.
+
+2013-02-11  Uros Bizjak  <ubizjak@gmail.com>
+
+	Backport from mainline
+	2013-02-11  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR rtl-optimization/56275
+	* gcc.dg/pr56275.c: New test.
+
+2013-02-03  Thomas Koenig  <tkoenig@gcc.gnu.org>
+
+	Backport from trunk
+	PR fortran/50627
+	PR fortran/56054
+	* gfortran.dg/block_12.f90:  New test.
+	* gfortran.dg/module_error_1.f90:  New test.
+
+2013-02-01  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnat.dg/opt26.adb: New test.
+
+2013-01-24  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from mainline
+	2013-01-04  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimization/55755
+	* gcc.dg/torture/pr55755.c: New test.
+	* gcc.dg/tree-ssa/sra-13.c: Likewise.
+	* gcc.dg/tree-ssa/pr45144.c: Update.
+
+2013-01-21  Uros Bizjak  <ubizjak@gmail.com>
+
+	PR rtl-optimization/56023
+	* gcc.dg/pr56023.c: New test.
+
+2013-01-21  Martin Jambor  <mjambor@suse.cz>
+
+	Backport from mainline
+	2013-01-17  Martin Jambor  <mjambor@suse.cz>
+
+	PR tree-optimizations/55264
+	* g++.dg/ipa/pr55264.C: New test.
+
+2013-01-14  Janus Weil  <janus@gcc.gnu.org>
+
+	PR fortran/55072
+	* gfortran.dg/internal_pack_13.f90: New test.
+	* gfortran.dg/internal_pack_14.f90: New test.
+
+2013-01-14  Paul Thomas  <pault@gcc.gnu.org>
+
+	PR fortran/55618
+	* gfortran.dg/elemental_scalar_args_2.f90: New test.
+
+2013-01-08  Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/42769
+	PR fortran/45836
+	PR fortran/45900
+	* gfortran.dg/use_23.f90: New test.
+	* gfortran.dg/use_24.f90: New test.
+	* gfortran.dg/use_25.f90: New test.
+	* gfortran.dg/use_26.f90: New test.
+	* gfortran.dg/use_27.f90: New test.
+
+2013-01-07  Steven G. Kargl  <kargl@gcc.gnu.org>
+	    Mikael Morin  <mikael@gcc.gnu.org>
+
+	PR fortran/55827
+	* gfortran.dg/use_22.f90: New test.
+
 2012-12-21  Martin Jambor  <mjambor@suse.cz>
 
 	PR tree-optimization/55355
