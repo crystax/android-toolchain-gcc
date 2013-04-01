@@ -7010,8 +7010,9 @@ cp_parser_delete_expression (cp_parser* parser)
    otherwise.  */
 
 static bool
-cp_parser_token_starts_cast_expression (cp_token *token)
+cp_parser_tokens_start_cast_expression (cp_parser *parser)
 {
+  cp_token *token = cp_lexer_peek_token (parser->lexer);
   switch (token->type)
     {
     case CPP_COMMA:
@@ -7051,6 +7052,12 @@ cp_parser_token_starts_cast_expression (cp_token *token)
     case CPP_OR_OR:
     case CPP_EOF:
       return false;
+
+    case CPP_OPEN_PAREN:
+      /* In ((type ()) () the last () isn't a valid cast-expression,
+	 so the whole must be parsed as postfix-expression.  */
+      return cp_lexer_peek_nth_token (parser->lexer, 2)->type
+	     != CPP_CLOSE_PAREN;
 
       /* '[' may start a primary-expression in obj-c++.  */
     case CPP_OPEN_SQUARE:
@@ -7144,8 +7151,7 @@ cp_parser_cast_expression (cp_parser *parser, bool address_p, bool cast_p,
 	 parenthesized ctor such as `(T ())' that looks like a cast to
 	 function returning T.  */
       if (!cp_parser_error_occurred (parser)
-	  && cp_parser_token_starts_cast_expression (cp_lexer_peek_token
-						     (parser->lexer)))
+	  && cp_parser_tokens_start_cast_expression (parser))
 	{
 	  cp_parser_parse_definitely (parser);
 	  expr = cp_parser_cast_expression (parser,
@@ -17664,9 +17670,10 @@ cp_parser_initializer_list (cp_parser* parser, bool* non_constant_p)
 	       && cp_lexer_next_token_is (parser->lexer, CPP_OPEN_SQUARE))
 	{
 	  /* In C++11, [ could start a lambda-introducer.  */
+	  bool non_const = false;
+
 	  cp_parser_parse_tentatively (parser);
 	  cp_lexer_consume_token (parser->lexer);
-	  bool non_const = false;
 	  designator = cp_parser_constant_expression (parser, true, &non_const);
 	  cp_parser_require (parser, CPP_CLOSE_SQUARE, RT_CLOSE_SQUARE);
 	  cp_parser_require (parser, CPP_EQ, RT_EQ);

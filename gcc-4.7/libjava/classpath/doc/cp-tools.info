@@ -1,5 +1,5 @@
 This is cp-tools.info, produced by makeinfo version 4.13 from
-/work/release/4.7-2013.01/gcc-linaro-4.7-2013.01/libjava/classpath/doc/cp-tools.texinfo.
+/work/release/4.7-2013.03/gcc-linaro-4.7-2013.03/libjava/classpath/doc/cp-tools.texinfo.
 
 This file documents the Tools included in a standard distribution of
 the GNU Classpath project deliverables.
@@ -1858,12 +1858,7 @@ _Verbosity Options_
 
 _Virtual Machine Options_
      *Note Options Controlling Gjdoc Behavior: Virtual Machine Options.
-          -classpath
-
-          -bootclasspath
-
-          -J
-     VMOPT
+          -classpath  -bootclasspath  -J VMOPT
 
 
 * Menu:
@@ -3144,39 +3139,39 @@ Node: tnameserv Tool54321
 Node: gjdoc Tool54945
 Node: Invoking the Standard Doclet56933
 Node: Option Summary by Type58088
-Node: Source Set Options60543
-Node: Source Format Options62407
-Node: Interlinking Options63921
-Node: Generation Options66698
-Node: Taglet Options72795
-Node: Doclet Options75016
-Node: Decoration Options76592
-Node: Output Control Options80683
-Node: Verbosity Options84215
-Node: Virtual Machine Options84561
-Node: Invoking a Custom Doclet85957
-Node: Gjdoc Option Summary86632
-Node: Other Doclets86812
-Node: Built-in Doclets87040
-Node: Using TexiDoclet87295
-Node: Using XmlDoclet87517
-Node: Using IspellDoclet87742
-Node: Using DebugDoclet87970
-Node: Third-party Doclets88170
-Node: DocBook Doclet88386
-Node: PDFDoclet88529
-Node: JUnitDoclet88682
-Node: Gjdoc Concepts88816
-Node: Taglets89060
-Node: Writing Doclets89243
-Node: Doclet Invocation Interface89583
-Node: Using AbstractDoclet90375
-Node: GNU Doclet SPI93369
-Node: XHTML Fragments94841
-Node: First Sentence Detector96274
-Node: Adding Custom Resources98036
-Node: I18N Issues99732
-Node: Language Resources100234
-Node: Message Formats103898
+Node: Source Set Options60518
+Node: Source Format Options62382
+Node: Interlinking Options63896
+Node: Generation Options66673
+Node: Taglet Options72770
+Node: Doclet Options74991
+Node: Decoration Options76567
+Node: Output Control Options80658
+Node: Verbosity Options84190
+Node: Virtual Machine Options84536
+Node: Invoking a Custom Doclet85932
+Node: Gjdoc Option Summary86607
+Node: Other Doclets86787
+Node: Built-in Doclets87015
+Node: Using TexiDoclet87270
+Node: Using XmlDoclet87492
+Node: Using IspellDoclet87717
+Node: Using DebugDoclet87945
+Node: Third-party Doclets88145
+Node: DocBook Doclet88361
+Node: PDFDoclet88504
+Node: JUnitDoclet88657
+Node: Gjdoc Concepts88791
+Node: Taglets89035
+Node: Writing Doclets89218
+Node: Doclet Invocation Interface89558
+Node: Using AbstractDoclet90350
+Node: GNU Doclet SPI93344
+Node: XHTML Fragments94816
+Node: First Sentence Detector96249
+Node: Adding Custom Resources98011
+Node: I18N Issues99707
+Node: Language Resources100209
+Node: Message Formats103873
 
 End Tag Table
