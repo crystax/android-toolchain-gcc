@@ -203,6 +203,8 @@ typedef __PTRDIFF_TYPE__ ptrdiff_t;
 #if (defined (__FreeBSD__) && (__FreeBSD__ >= 5)) \
   || defined(__FreeBSD_kernel__)
 /* __size_t is a typedef on FreeBSD 5, must not trash it. */
+#elif defined(__ANDROID__) && defined(__CRYSTAX__)
+/* __size_t is a typedef in CrystaX NDK */
 #else
 #define __size_t
 #endif
